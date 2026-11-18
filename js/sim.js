@@ -1291,7 +1291,7 @@
         v: 1, map: this.map.id, mode: this.mode, perks: this.perks, seed: this.seed,
         rand: this.rand.state(), waveRand: this.waveRand.state(), waveCache: this.waveCache,
         gold: num(this.gold), lives: num(this.lives), maxLives: num(this.maxLives),
-        ...pick(this, ['wave', 'time', 'countdown', 'nextId', 'spawnCount', 'hornUntil', 'castCount', 'stats', 'damageBy', 'pending', 'spawners']),
+        ...pick(this, ['wave', 'time', 'countdown', 'nextId', 'spawnCount', 'hornUntil', 'castCount', 'stats', 'damageBy', 'pending', 'spawners', 'cheated']),
         abilities: Object.fromEntries(Object.entries(this.abilities).map(([k, v]) => [k, v.cd])),
         seen: [...this.seen],
         towers: this.towers.map((t) => ({
@@ -1322,7 +1322,7 @@
         waveCache: data.waveCache || {}, gold: den(data.gold), lives: den(data.lives), maxLives: den(data.maxLives),
         wave: data.wave, time: data.time, countdown: data.countdown, nextId: data.nextId, spawnCount: data.spawnCount,
         hornUntil: data.hornUntil, castCount: data.castCount || 0, stats: data.stats, damageBy: data.damageBy || {},
-        pending: data.pending, spawners: data.spawners, seen: new Set(data.seen),
+        pending: data.pending, spawners: data.spawners, seen: new Set(data.seen), cheated: !!data.cheated,
       });
       for (const id in data.abilities) if (g.abilities[id]) g.abilities[id].cd = data.abilities[id];
       const towers = new Map();

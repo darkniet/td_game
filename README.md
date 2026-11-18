@@ -43,6 +43,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | `F` | Cycle game speed (1×/2×/3×/5×) |
 | `A` | Toggle auto-waves |
 | `M` | Mute |
+| `^` | Cheat menu (gold, lives, abilities, hero level, Glory) |
 | `Space` | Pause |
 | `Esc` / right-click | Cancel |
 

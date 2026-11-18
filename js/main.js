@@ -161,7 +161,7 @@
     castKills: {},
     dirty: false,
     unlock(id) {
-      if (this.got[id] || (game && game.sandbox && !inMenu)) return;
+      if (this.got[id] || (game && (game.sandbox || game.cheated) && !inMenu)) return;
       const a = TD.ACHIEVEMENTS.find((x) => x.id === id);
       if (!a) return;
       this.got[id] = Date.now();
@@ -183,7 +183,7 @@
     },
     // React to simulation events (never in sandbox, where gold and lives are free).
     onEvent(ev) {
-      if (game.sandbox) return;
+      if (game.sandbox || game.cheated) return;
       const l = this.life;
       switch (ev.type) {
         case 'kill':
@@ -1394,9 +1394,105 @@
   });
   ui.speedBtns.forEach((b) => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
 
+  // ---- Cheat menu (^) -------------------------------------------------------------
+
+  const cheatPanel = document.createElement('div');
+  cheatPanel.id = 'cheats';
+  cheatPanel.innerHTML = `
+    <div class="cheat-head"><b>Cheats</b><button data-cheat="close" title="Close (^)">×</button></div>
+    <div class="cheat-row">
+      <button data-cheat="gold" data-n="100">+100</button>
+      <button data-cheat="gold" data-n="1000">+1k</button>
+      <button data-cheat="gold" data-n="10000">+10k</button>
+    </div>
+    <form class="cheat-row" data-cheat-form>
+      <input type="number" min="1" step="1" placeholder="Amount" aria-label="Gold amount">
+      <button type="submit">Give gold</button>
+    </form>
+    <div class="cheat-row">
+      <button data-cheat="lives">+10 lives</button>
+      <button data-cheat="abilities">Recharge abilities</button>
+    </div>
+    <div class="cheat-row">
+      <button data-cheat="kill">Slay all foes</button>
+      <button data-cheat="hero">Hero +1 level</button>
+    </div>
+    <div class="cheat-row">
+      <button data-cheat="glory">+100 Glory</button>
+    </div>
+    <small>Runs where you cheat don't earn trophies.</small>`;
+  document.body.appendChild(cheatPanel);
+
+  function toggleCheats(force) {
+    const open = force != null ? force : !cheatPanel.classList.contains('open');
+    cheatPanel.classList.toggle('open', open);
+    if (open) cheatPanel.querySelector('input').focus({ preventScroll: true });
+  }
+
+  function giveGold(n) {
+    if (!game || inMenu || game.state !== 'playing' || !(n > 0)) return false;
+    game.gold += Math.floor(n);
+    game.cheated = true;
+    return true;
+  }
+
+  function cheat(kind, n) {
+    if (kind === 'close') { toggleCheats(false); return; }
+    if (kind === 'glory') {
+      progress.addGlory(100);
+      toast('<b class="glory-i">+100</b> Glory', 'gold', 1400);
+      if (inMenu) showMenu();
+      return;
+    }
+    if (!game || inMenu || game.state !== 'playing') {
+      toast('Start a game to use that cheat.', 'bad', 1400);
+      return;
+    }
+    game.cheated = true;
+    if (kind === 'gold') {
+      giveGold(n);
+    } else if (kind === 'lives') {
+      game.lives += 10;
+    } else if (kind === 'abilities') {
+      for (const id in game.abilities) game.abilities[id].cd = 0;
+    } else if (kind === 'kill') {
+      for (const e of game.enemies) if (e.alive) game.kill(e, null);
+    } else if (kind === 'hero') {
+      const next = game.heroNextXp();
+      if (next == null) toast(`${TD.HERO.name} is already at max level.`, '', 1400);
+      else game.gainXp(next - game.hero.xp);
+    }
+    TD.Audio.play('coin');
+    refreshAll();
+  }
+
+  cheatPanel.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cheat]');
+    if (b) cheat(b.dataset.cheat, +b.dataset.n || 0);
+  });
+  cheatPanel.querySelector('[data-cheat-form]').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = cheatPanel.querySelector('input');
+    const n = Math.floor(+input.value);
+    if (n > 0) cheat('gold', n);
+    else TD.Audio.play('error');
+    input.select();
+  });
+
+  // ^ is a dead key on German layouts, so match its physical key as well as the character.
+  const isCaret = (e) => e.key === '^' || e.key === '°' || (e.key === 'Dead' && (e.code === 'Backquote' || e.code === 'IntlBackslash'));
+
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.target.closest && e.target.closest('input')) return;
+    if (isCaret(e)) {
+      e.preventDefault();
+      toggleCheats();
+      return;
+    }
+    if (e.target.closest && e.target.closest('input')) {
+      if (e.key === 'Escape') toggleCheats(false);
+      return;
+    }
     TD.Audio.unlock();
     const k = e.key.toLowerCase();
     if (k === ' ') {
