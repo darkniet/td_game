@@ -5,7 +5,7 @@
   const T = TD.TILE;
   const W = TD.COLS * T, H = TD.ROWS * T;
   const EXTRA_SPRITES = ['keep_blue', 'dome_arcane', 'dome_frost', 'dome_storm', 'hall_blue', 'house_b_blue',
-    'church_gold', 'hut_top_gold', 'roof_green', 'roof_blue'].map((n) => 'structures/' + n);
+    'church_gold', 'hut_top_gold', 'roof_green', 'roof_blue'].map((n) => 'structures/' + n).concat(['units/hero']);
   const ROAD_TILES = {
     5: 'road_ns', 10: 'road_ew', 3: 'road_ne', 9: 'road_nw', 6: 'road_es', 12: 'road_ws',
     14: 'road_wes', 11: 'road_wen', 13: 'road_nsw', 7: 'road_nse', 15: 'road_x',
@@ -19,6 +19,9 @@
 
   const images = {};
   const tintCache = new Map();
+  const DEFAULT_SETTINGS = { shake: true, numbers: true, particles: 'normal', hoverRange: true };
+  const opt = () => TD.settings || DEFAULT_SETTINGS;
+  const PARTICLES = { low: 0.35, normal: 1, high: 1.6 };
   const tierOf = (t) => (t.branch ? 3 + (t.blevel || 0) : t.level);
   const statsOf = (t) => (t.branch ? t.def.branches[t.branch].levels[t.blevel || 0] : t.def.levels[t.level]);
 
@@ -550,6 +553,163 @@
     return c;
   }
 
+  // ---- Flyers ------------------------------------------------------------------
+  // Drawn in code (the art pack has no flying units), seen from the front with flapping wings.
+
+  const FLYERS = {
+    bat: { body: '#4a3560', dark: '#24182f', wing: '#6b4f8a', span: 17, flap: 15, eye: '#ff5a4a' },
+    wyvern: { body: '#3f8f4a', dark: '#1d4d26', wing: '#77c46f', span: 24, flap: 8, eye: '#ffe066', head: true },
+    dragon: { body: '#c0392b', dark: '#5e1a12', wing: '#e8704f', span: 26, flap: 5, eye: '#ffe066', head: true, belly: '#ffcf6a', horns: true },
+  };
+  const FLY_HEIGHT = 34;
+
+  function drawFlyer(ctx, kind, x, y, scale, time, tint) {
+    const f = FLYERS[kind];
+    const c = (col) => tint || col;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = c(f.dark);
+    const lift = Math.sin(time * f.flap) * f.span * 0.45;
+    for (const side of [-1, 1]) {
+      const sp = f.span * side;
+      ctx.fillStyle = c(f.wing);
+      ctx.beginPath();
+      ctx.moveTo(side * 3, -4);
+      ctx.lineTo(sp, -5 - lift);
+      ctx.quadraticCurveTo(sp * 0.86, 2 - lift * 0.6, sp * 0.64, 1 - lift * 0.55);
+      ctx.quadraticCurveTo(sp * 0.5, 6 - lift * 0.4, sp * 0.32, 2 - lift * 0.3);
+      ctx.quadraticCurveTo(sp * 0.18, 6 - lift * 0.15, side * 3, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(side * 3, -3);
+      ctx.lineTo(sp * 0.64, 1 - lift * 0.55);
+      ctx.moveTo(side * 3, -3);
+      ctx.lineTo(sp * 0.32, 2 - lift * 0.3);
+      ctx.stroke();
+    }
+    if (f.head) {
+      // Tail sweeping down behind the body.
+      ctx.strokeStyle = c(f.dark);
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(0, 6); ctx.quadraticCurveTo(5, 12, 2 + Math.sin(time * 3) * 2, 17); ctx.stroke();
+      ctx.strokeStyle = c(f.body);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = c(f.dark);
+    }
+    ctx.fillStyle = c(f.body);
+    ctx.beginPath(); ctx.ellipse(0, 0, f.head ? 6.5 : 6, f.head ? 9 : 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (f.belly) {
+      ctx.fillStyle = c(f.belly);
+      ctx.beginPath(); ctx.ellipse(0, 2, 3.5, 6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    const hy = f.head ? -11 : -3;
+    if (f.head) {
+      ctx.fillStyle = c(f.body);
+      ctx.beginPath(); ctx.arc(0, hy, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, hy + 4, 3.2, 2.4, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (f.horns) {
+        ctx.fillStyle = c('#f3e3c3');
+        for (const side of [-1, 1]) {
+          ctx.beginPath(); ctx.moveTo(side * 3, hy - 3); ctx.lineTo(side * 7, hy - 10); ctx.lineTo(side * 5, hy - 2); ctx.closePath(); ctx.fill();
+        }
+      }
+    } else {
+      ctx.fillStyle = c(f.body);
+      for (const side of [-1, 1]) {
+        ctx.beginPath(); ctx.moveTo(side * 1.5, -6); ctx.lineTo(side * 4.5, -13); ctx.lineTo(side * 5, -5); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    }
+    if (!tint) {
+      ctx.fillStyle = f.eye;
+      ctx.beginPath(); ctx.arc(-2, hy, 1.3, 0, Math.PI * 2); ctx.arc(2, hy, 1.3, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Icon for menus and panels: a PNG path for ground units, a data URL for drawn flyers.
+  const iconCache = {};
+  function enemyIcon(type) {
+    const def = TD.ENEMIES[type];
+    if (!def.draw) return 'assets/units/' + def.sprite + '.png';
+    if (!iconCache[type]) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const ctx = c.getContext('2d');
+      drawFlyer(ctx, def.draw, 32, 36, 1.15, 0.35);
+      iconCache[type] = c.toDataURL();
+    }
+    return iconCache[type];
+  }
+
+  // ---- Traps -------------------------------------------------------------------
+
+  function drawTrap(ctx, tr, time, now) {
+    const x = tr.x * T, y = tr.y * T;
+    if (tr.type === 'spikes') {
+      ctx.globalAlpha *= 0.55 + 0.45 * Math.max(0, tr.uses) / tr.def.uses;
+      ctx.fillStyle = '#8a5a2e'; ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = 2;
+      roundRect(ctx, x - 18, y - 11, 36, 22, 4); ctx.fill(); ctx.stroke();
+      const up = tr.firedT < 0.25 ? 1.6 : 1;
+      ctx.fillStyle = '#c8d0d4'; ctx.strokeStyle = '#5b6060'; ctx.lineWidth = 1;
+      for (let r = 0; r < 2; r++) {
+        for (let k = 0; k < 4; k++) {
+          const sx = x - 12 + k * 8, sy = y - 2 + r * 9;
+          ctx.beginPath(); ctx.moveTo(sx - 3, sy); ctx.lineTo(sx, sy - 6 * up); ctx.lineTo(sx + 3, sy); ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+      }
+    } else if (tr.type === 'tar') {
+      const left = tr.until - now;
+      ctx.globalAlpha *= Math.min(1, left / 5);
+      ctx.fillStyle = 'rgba(52,38,26,0.9)';
+      ctx.beginPath(); ctx.ellipse(x, y, 26, 15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(78,60,42,0.9)';
+      ctx.beginPath(); ctx.ellipse(x - 4, y - 2, 16, 8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.beginPath(); ctx.ellipse(x - 9, y - 5, 6, 2.2, -0.3, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 3; i++) {
+        const p = (time * 0.7 + i * 0.37 + tr.id * 0.11) % 1;
+        ctx.strokeStyle = `rgba(90,80,65,${1 - p})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(x - 12 + i * 11, y + 3 - (i % 2) * 6, 1 + p * 3.5, 0, Math.PI * 2); ctx.stroke();
+      }
+    } else if (tr.type === 'keg') {
+      shadow(ctx, x, y + 2, 12, 4, 0.25);
+      ctx.fillStyle = '#a0622d'; ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = 2;
+      roundRect(ctx, x - 10, y - 22, 20, 24, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#4d3319';
+      ctx.fillRect(x - 10, y - 17, 20, 3); ctx.fillRect(x - 10, y - 5, 20, 3);
+      ctx.fillStyle = '#d9473a';
+      ctx.fillRect(x - 3, y - 13, 6, 7);
+      ctx.strokeStyle = '#3a2a1a'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x + 2, y - 22); ctx.quadraticCurveTo(x + 6, y - 27, x + 4, y - 31); ctx.stroke();
+      glow(ctx, x + 4, y - 31, 5 + Math.sin(time * 25) * 1.5, 'rgba(255,230,120,1)', 'rgba(255,120,30,0)');
+    } else if (tr.type === 'barricade') {
+      const shake = tr.firedT < 0.12 ? (Math.random() - 0.5) * 3 : 0;
+      shadow(ctx, x, y + 3, 24, 5, 0.25);
+      ctx.save();
+      ctx.translate(x + shake, y);
+      ctx.lineCap = 'round';
+      for (let k = -1; k <= 1; k++) {
+        for (const d of [-1, 1]) {
+          ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.moveTo(k * 13 - d * 7, 4); ctx.lineTo(k * 13 + d * 7, -18); ctx.stroke();
+          ctx.strokeStyle = '#b07a42'; ctx.lineWidth = 2.6;
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = '#9a6a38'; ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = 2;
+      roundRect(ctx, -24, -8, 48, 8, 3); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // ---- Effects -----------------------------------------------------------------
 
   class Effects {
@@ -557,6 +717,7 @@
     clear() { this.list.length = 0; this.shake = 0; }
     add(p) { this.list.push(p); }
     puff(x, y, n, color, speed, size, grav) {
+      n = Math.round(n * PARTICLES[opt().particles || 'normal']);
       for (let i = 0; i < n; i++) {
         const a = Math.random() * Math.PI * 2, v = (0.3 + Math.random()) * speed;
         this.add({ kind: 'dot', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.6 - speed * 0.3,
@@ -565,7 +726,7 @@
     }
     text(x, y, str, color, big) {
       // Keep big fights readable: drop small numbers once plenty are already floating.
-      if (!big && this.list.reduce((n, p) => n + (p.kind === 'text'), 0) > 14) return;
+      if (!big && (!opt().numbers || this.list.reduce((n, p) => n + (p.kind === 'text'), 0) > 14)) return;
       this.add({ kind: 'text', x, y, vx: 0, vy: -38, life: 0, max: big ? 1.6 : 1.0, str, color, big, drag: 1.5 });
     }
     ring(x, y, r, color, max) { this.add({ kind: 'ring', x, y, r, color, life: 0, max: max || 0.4 }); }
@@ -601,6 +762,36 @@
           ctx.stroke();
           ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
           ctx.stroke();
+        } else if (p.kind === 'corpse') {
+          // Foes topple over (flyers drop out of the sky) and fade away.
+          const fall = Math.min(1, k * 2.4);
+          ctx.globalAlpha = k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4;
+          if (p.flyer) {
+            const drop = FLY_HEIGHT * (1 - Math.min(1, k * 1.7));
+            ctx.save();
+            ctx.translate(p.x, p.y - drop);
+            ctx.rotate(fall * 2.4);
+            drawFlyer(ctx, p.flyer, 0, 0, p.scale, 0.5, null);
+            ctx.restore();
+          } else {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate((p.flip ? -1 : 1) * fall * Math.PI * 0.45);
+            sprite(ctx, p.sprite, 0, 0, p.scale, p.flip);
+            if (k < 0.15) {
+              ctx.globalAlpha *= 0.7;
+              sprite(ctx, null, 0, 0, p.scale, p.flip, tinted(p.sprite, '#ffffff'));
+            }
+            ctx.restore();
+          }
+        } else if (p.kind === 'ghost') {
+          // A sold tower sinks into the ground.
+          ctx.globalAlpha = 1 - k;
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.scale(1 - k * 0.5, 1 - k * 0.8);
+          drawTower(ctx, p.t, 0, 0, 0);
+          ctx.restore();
         } else if (p.kind === 'text') {
           ctx.globalAlpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
           ctx.font = `800 ${p.big ? 22 : p.small ? 12 : 15}px "Alegreya Sans", system-ui, sans-serif`;
@@ -641,6 +832,10 @@
       this.weather = [];
       this.clouds = [];
       this.decals = [];
+      this.pop = new Map();
+      this.now = 0;
+      this.laneAlpha = 0;
+      this.heroMark = null;
     }
 
     resize(cssW, cssH) {
@@ -658,6 +853,9 @@
       this.fx.clear();
       this.castleFlash = 0;
       this.decals = [];
+      this.pop.clear();
+      this.laneAlpha = 0;
+      this.heroMark = null;
       this.weather = [];
       if (game.map.ground === 'snow') {
         for (let i = 0; i < 90; i++) this.weather.push({ kind: 'snow', x: Math.random() * W, y: Math.random() * H, s: 1 + Math.random() * 2, v: 18 + Math.random() * 30, p: Math.random() * 6 });
@@ -674,11 +872,17 @@
       const px = ev.x * T, py = ev.y * T;
       const castle = this.game.level.castle;
       switch (ev.type) {
-        case 'kill':
-          fx.puff(px, py - 12, ev.boss ? 26 : 9, 'rgba(235,228,214,0.9)', ev.boss ? 120 : 60, ev.boss ? 7 : 4.5);
+        case 'kill': {
+          const def = TD.ENEMIES[ev.enemy];
+          fx.add({
+            kind: 'corpse', x: px, y: py, life: 0, max: ev.boss ? 1.6 : 0.9, scale: ev.scale, flip: ev.flip,
+            sprite: def.draw ? null : 'units/' + def.sprite, flyer: def.draw || null,
+          });
+          fx.puff(px, py - (ev.fly ? FLY_HEIGHT : 12), ev.boss ? 26 : 7, 'rgba(235,228,214,0.9)', ev.boss ? 120 : 55, ev.boss ? 7 : 4);
           fx.text(px, py - 30, '+' + ev.gold, '#ffd166', ev.boss || !!ev.elite);
           if (ev.boss) fx.shake = 1;
           break;
+        }
         case 'splash':
           if (ev.kind === 'flask') {
             fx.ring(px, py, ev.radius * T * 1.3, 'rgba(160,255,130,0.9)', 0.4);
@@ -737,12 +941,65 @@
           break;
         case 'build':
         case 'upgrade':
+          this.pop.set(ev.id, { t: this.now, build: ev.type === 'build' });
           fx.puff(px, py + 20, 14, 'rgba(225,205,170,0.9)', 80, 5);
-          if (ev.type === 'upgrade') fx.ring(px, py + 22, 50, ev.branch ? 'rgba(220,150,255,0.95)' : 'rgba(255,209,102,0.95)', 0.5);
+          if (ev.type === 'upgrade') {
+            fx.ring(px, py + 22, 50, ev.branch ? 'rgba(220,150,255,0.95)' : 'rgba(255,209,102,0.95)', 0.5);
+            for (let i = 0; i < 12; i++) {
+              fx.add({ kind: 'dot', x: px + (Math.random() - 0.5) * 40, y: py + 20 - Math.random() * 10, vx: 0, vy: -60 - Math.random() * 60, life: 0, max: 0.7, size: 2.2, color: ev.branch ? '#e6a8ff' : '#ffe08a', drag: 1.5 });
+            }
+          }
           break;
         case 'sell':
+          fx.add({ kind: 'ghost', t: ev.tower, x: px, y: (ev.tower.cy + 0.86) * T, life: 0, max: 0.35 });
           fx.puff(px, py + 20, 12, 'rgba(225,205,170,0.9)', 80, 5);
-          if (ev.gold) fx.text(px, py - 10, '+' + ev.gold, '#ffd166');
+          if (ev.gold) fx.text(px, py - 10, '+' + ev.gold + (ev.full ? ' (full refund)' : ''), '#ffd166');
+          break;
+        case 'trap':
+          fx.puff(px, py, 10, 'rgba(225,205,170,0.9)', 60, 4);
+          break;
+        case 'spike':
+          fx.puff(px, py - 4, 4, 'rgba(200,200,205,0.9)', 50, 2.5);
+          break;
+        case 'keg':
+          fx.ring(px, py, ev.radius * T * 1.5, 'rgba(255,200,90,0.95)', 0.5);
+          fx.puff(px, py, 22, 'rgba(255,130,40,0.95)', 140, 6, -40);
+          fx.puff(px, py, 10, 'rgba(70,55,50,0.85)', 90, 7, -30);
+          fx.shake = Math.max(fx.shake, 0.8);
+          this.decals.push({ x: px, y: py, r: ev.radius * T * 0.7, life: 0, max: 8 });
+          break;
+        case 'barricadeDown':
+          fx.puff(px, py - 8, 18, 'rgba(176,122,66,0.95)', 110, 4, 200);
+          fx.puff(px, py - 8, 8, 'rgba(225,205,170,0.9)', 70, 5);
+          break;
+        case 'whirlwind':
+          fx.ring(px, py, ev.radius * T * 1.6, 'rgba(255,230,150,0.95)', 0.4);
+          fx.ring(px, py, ev.radius * T * 1.1, 'rgba(255,255,255,0.9)', 0.3);
+          for (let i = 0; i < 3; i++) {
+            const a0 = Math.random() * Math.PI * 2;
+            const pts = [];
+            for (let k = 0; k <= 6; k++) {
+              const a = a0 + k * 0.32;
+              pts.push([px + Math.cos(a) * ev.radius * T * 0.8, py - 14 + Math.sin(a) * ev.radius * T * 0.45]);
+            }
+            fx.bolt(pts, 'rgba(255,245,210,0.95)', 0.22);
+          }
+          break;
+        case 'rallyCry':
+          fx.ring(px, py, ev.radius * T * 1.5, 'rgba(130,255,160,0.9)', 0.6);
+          for (let i = 0; i < 10; i++) {
+            fx.add({ kind: 'text', x: px + (Math.random() - 0.5) * 70, y: py - 20 - Math.random() * 20, vx: 0, vy: -35, life: 0, max: 0.8, str: '+', color: '#7dff9a', drag: 1 });
+          }
+          break;
+        case 'heroLevel':
+          fx.text(px, py - 60, 'Level ' + ev.level + '!', '#ffd166', true);
+          fx.ring(px, py, 60, 'rgba(255,209,102,0.95)', 0.7);
+          for (let i = 0; i < 18; i++) {
+            fx.add({ kind: 'dot', x: px + (Math.random() - 0.5) * 30, y: py - Math.random() * 20, vx: 0, vy: -80 - Math.random() * 80, life: 0, max: 0.9, size: 2.5, color: '#ffe08a', drag: 1.2 });
+          }
+          break;
+        case 'heroMove':
+          this.heroMark = { x: px, y: py, t: this.now };
           break;
         case 'income':
           fx.text(px, py - 40, '+' + ev.gold, '#ffd166');
@@ -756,7 +1013,7 @@
           if (ev.tower === 'catapult') fx.puff(px, py + 18, 4, 'rgba(225,205,170,0.8)', 40, 3);
           break;
         case 'soldierDown':
-          fx.puff(px, py - 10, ev.expired ? 10 : 7, 'rgba(225,225,235,0.9)', 50, 4);
+          fx.puff(px, py - 10, ev.hero ? 20 : ev.expired ? 10 : 7, 'rgba(225,225,235,0.9)', ev.hero ? 80 : 50, ev.hero ? 6 : 4);
           break;
         case 'soldierUp':
           fx.puff(px, py - 10, 6, 'rgba(160,200,255,0.9)', 40, 3);
@@ -791,25 +1048,34 @@
 
     draw(game, view, dt, time) {
       const ctx = this.ctx;
+      this.now = time;
       this.fx.update(dt);
       this.castleFlash = Math.max(0, this.castleFlash - dt * 2.5);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#1b2414';
       ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-      const sh = this.fx.shake * 3;
+      const sh = opt().shake ? this.fx.shake * 3 : 0;
       ctx.setTransform(this.scale, 0, 0, this.scale, (Math.random() - 0.5) * sh * this.scale, (Math.random() - 0.5) * sh * this.scale);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(this.bg, 0, 0, W, H);
 
+      this.drawLanes(ctx, game, view, dt, time);
       this.drawGround(ctx, game, dt, time);
       if (view.placing) this.drawGrid(ctx, game);
+      if (view.trap) this.drawRoadGrid(ctx, game);
       const sel = view.selected;
       if (sel) {
         const s = game.towerStats(sel);
         if (s.range) this.drawRange(ctx, sel.x * T, sel.y * T, s.range, 'rgba(255,255,255,0.13)', 'rgba(255,255,255,0.7)');
         if (sel.rally) this.drawRallyFlag(ctx, sel.rally.x * T, sel.rally.y * T, time);
       }
+      const hov = view.hoverTower;
+      if (hov && hov !== sel && opt().hoverRange && !view.placing && !view.trap) {
+        const s = game.towerStats(hov);
+        if (s.range) this.drawRange(ctx, hov.x * T, hov.y * T, s.range, 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0.35)');
+      }
+      this.drawHeroMarks(ctx, game, view, time);
 
       // Everything that stands up gets sorted by its feet.
       const items = [];
@@ -818,7 +1084,8 @@
       items.push({ y: game.level.castle.y + 0.1, castle: true });
       for (const t of game.towers) items.push({ y: t.cy + 0.86, t });
       for (const s of game.soldiers) if (s.alive) items.push({ y: s.y, s });
-      for (const e of game.enemies) items.push({ y: e.y, e });
+      for (const e of game.enemies) if (!e.def.fly) items.push({ y: e.y, e });
+      for (const tr of game.traps) if (tr.type === 'keg' || tr.type === 'barricade') items.push({ y: tr.y + 0.05, tr });
       items.sort((a, b) => a.y - b.y);
       const horn = game.time < game.hornUntil;
       for (const it of items) {
@@ -841,7 +1108,10 @@
             ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.ellipse(bx, by - 2, 25, 9, 0, 0, Math.PI * 2); ctx.stroke();
           }
-          drawTower(ctx, t, bx, by, time);
+          this.drawTowerAnimated(ctx, t, bx, by, time);
+        } else if (it.tr) {
+          drawTrap(ctx, it.tr, time, game.time);
+          ctx.globalAlpha = 1;
         } else if (it.s) {
           this.drawSoldier(ctx, it.s, time);
         } else {
@@ -849,11 +1119,24 @@
         }
       }
 
+      // Flyers soar above everything on the ground.
+      const flyers = game.enemies.filter((e) => e.def.fly).sort((a, b) => a.y - b.y);
+      for (const e of flyers) this.drawFlyerEnemy(ctx, e, game, time);
+
       for (const t of game.towers) pips(ctx, t.x * T, (t.cy + 0.86) * T + 5, game.tier(t));
       if (view.placing && view.hover) this.drawGhost(ctx, game, view, time);
-      for (const e of game.enemies) this.drawHealth(ctx, e.x * T, e.y * T - e.scale * 56 - 10, e.hp, e.maxHp, e.def.boss ? 54 : 30, e.def.boss ? 6 : 4.5, e.def.boss);
+      if (view.trap && view.hover) this.drawTrapGhost(ctx, game, view, time);
+      for (const e of game.enemies) {
+        const top = e.def.fly ? e.y * T - FLY_HEIGHT - FLYERS[e.def.draw].span * e.scale * 0.35 - 14 : e.y * T - e.scale * 56 - 10;
+        this.drawHealth(ctx, e.x * T, top, e.hp, e.maxHp, e.def.boss ? 54 : 30, e.def.boss ? 6 : 4.5, e.def.boss);
+      }
       for (const s of game.soldiers) {
-        if (s.alive && s.hp < s.maxHp) this.drawHealth(ctx, s.x * T, s.y * T - s.scale * 56 - 6, s.hp, s.maxHp, 22, 3.5, false, '#5aa9ff');
+        if (!s.alive) continue;
+        if (s.hero) this.drawHeroBar(ctx, s, game);
+        else if (s.hp < s.maxHp) this.drawHealth(ctx, s.x * T, s.y * T - s.scale * 56 - 6, s.hp, s.maxHp, 22, 3.5, false, '#5aa9ff');
+      }
+      for (const tr of game.traps) {
+        if (tr.type === 'barricade' && tr.hp < tr.maxHp) this.drawHealth(ctx, tr.x * T, tr.y * T - 30, tr.hp, tr.maxHp, 34, 4, false, '#c9a46a');
       }
       for (const p of game.projectiles) this.drawProjectile(ctx, p, dt);
       this.drawStrikes(ctx, game, time);
@@ -886,8 +1169,169 @@
         }
         ctx.globalAlpha = 1;
       }
+      for (const tr of game.traps) {
+        if (tr.type === 'spikes' || tr.type === 'tar') {
+          drawTrap(ctx, tr, time, game.time);
+          ctx.globalAlpha = 1;
+        }
+      }
       for (const p of game.projectiles) {
         if (p.lob) shadow(ctx, p.x * T, p.y * T, Math.max(2, 6 - p.h), Math.max(1, 2.5 - p.h * 0.3), 0.25);
+      }
+    }
+
+    // Dashed flight lanes show where flyers will cross, whenever flyers are about.
+    drawLanes(ctx, game, view, dt, time) {
+      const next = game.nextWaveGroups();
+      const want = game.enemies.some((e) => e.def.fly) || (next && !game.waveRunning() && next.some(([type]) => TD.ENEMIES[type].fly)) ||
+        ((view.placing || view.trap) && game.seen.has('bat'));
+      this.laneAlpha += ((want ? 1 : 0) - this.laneAlpha) * Math.min(1, dt * 3);
+      if (this.laneAlpha < 0.02) return;
+      ctx.save();
+      ctx.globalAlpha = this.laneAlpha;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([7, 11]);
+      ctx.lineDashOffset = -time * 24;
+      for (const f of game.level.flights) {
+        const a = TD.pointAt(f, 0.8), b = TD.pointAt(f, f.length - 0.4);
+        ctx.strokeStyle = 'rgba(70,40,100,0.35)';
+        ctx.beginPath(); ctx.moveTo(a.x * T, a.y * T + 2); ctx.lineTo(b.x * T, b.y * T + 2); ctx.stroke();
+        ctx.strokeStyle = 'rgba(235,220,255,0.55)';
+        ctx.beginPath(); ctx.moveTo(a.x * T, a.y * T); ctx.lineTo(b.x * T, b.y * T); ctx.stroke();
+        // Chevrons pointing toward the keep.
+        const s = f.segs[0];
+        for (let d = 2; d < f.length - 1; d += 3) {
+          const p = TD.pointAt(f, d), ang = Math.atan2(s.dy, s.dx);
+          ctx.save();
+          ctx.translate(p.x * T, p.y * T);
+          ctx.rotate(ang);
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(235,220,255,0.6)';
+          ctx.beginPath(); ctx.moveTo(-5, -6); ctx.lineTo(2, 0); ctx.lineTo(-5, 6); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+    }
+
+    drawTowerAnimated(ctx, t, x, y, time) {
+      let sx = 1, sy = 1;
+      const pop = this.pop.get(t.id);
+      if (pop) {
+        const k = (time - pop.t) / 0.4;
+        if (k >= 1 || k < 0) this.pop.delete(t.id);
+        else {
+          // Ease-out-back: overshoots a little, then settles.
+          const e = 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2;
+          const s = pop.build ? 0.5 + 0.5 * e : 1 + Math.sin(k * Math.PI) * 0.12;
+          sx *= s; sy *= s;
+        }
+      }
+      if (t.fireT < 0.16 && (t.type === 'archer' || t.type === 'wizard' || t.type === 'alchemist')) {
+        const q = Math.sin((t.fireT / 0.16) * Math.PI);
+        sx *= 1 + q * 0.035; sy *= 1 - q * 0.06;
+      }
+      if (sx === 1 && sy === 1) { drawTower(ctx, t, x, y, time); return; }
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(sx, sy);
+      drawTower(ctx, t, 0, 0, time);
+      ctx.restore();
+    }
+
+    drawRoadGrid(ctx, game) {
+      for (const [x, y] of game.level.cells) {
+        if (!game.canPlaceTrap(x, y)) continue;
+        ctx.fillStyle = 'rgba(255,200,120,0.12)';
+        ctx.fillRect(x * T + 3, y * T + 3, T - 6, T - 6);
+      }
+    }
+
+    drawTrapGhost(ctx, game, view, time) {
+      const { x, y } = view.hover;
+      const def = TD.TRAPS[view.trap];
+      const ok = game.canPlaceTrap(x, y);
+      const good = ok && game.gold >= game.trapCost(view.trap);
+      ctx.fillStyle = good ? 'rgba(120,255,140,0.25)' : 'rgba(255,80,60,0.3)';
+      ctx.fillRect(x * T, y * T, T, T);
+      if (!ok) return;
+      if (def.radius) this.drawRange(ctx, (x + 0.5) * T, (y + 0.5) * T, def.radius, 'rgba(255,140,60,0.1)', 'rgba(255,170,90,0.7)');
+      ctx.globalAlpha = 0.75;
+      drawTrap(ctx, { type: view.trap, def, x: x + 0.5, y: y + 0.5, uses: def.uses || 1, until: game.time + 99, id: 0, firedT: 9 }, time, game.time);
+      ctx.globalAlpha = 1;
+    }
+
+    // Gold ring under the hero, his move order marker and (when selected) his reach.
+    drawHeroMarks(ctx, game, view, time) {
+      const h = game.hero;
+      const m = this.heroMark;
+      if (h.ordered) {
+        const x = h.hx * T, y = h.hy * T;
+        ctx.strokeStyle = `rgba(255,209,102,${0.6 + Math.sin(time * 8) * 0.3})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.ellipse(x, y, 14, 6, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - 5, y - 5); ctx.lineTo(x + 5, y + 5); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x - 5, y + 5); ctx.stroke();
+      } else if (m && time - m.t < 0.6) {
+        const k = (time - m.t) / 0.6;
+        ctx.strokeStyle = `rgba(255,209,102,${1 - k})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(m.x, m.y, 10 + k * 14, (10 + k * 14) * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (!h.alive) return;
+      const x = h.x * T, y = h.y * T;
+      if (view.hero) {
+        ctx.fillStyle = 'rgba(255,209,102,0.08)';
+        ctx.strokeStyle = 'rgba(255,209,102,0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.ellipse(h.hx * T, h.hy * T, 1.3 * T, 1.3 * T * 0.75, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.strokeStyle = `rgba(255,209,102,${view.hero ? 0.75 + Math.sin(time * 6) * 0.25 : 0.55})`;
+      ctx.lineWidth = view.hero ? 3 : 2;
+      ctx.beginPath(); ctx.ellipse(x, y + 1, 15, 6, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    drawHeroBar(ctx, h, game) {
+      const x = h.x * T, y = h.y * T - h.scale * 56 - 9;
+      this.drawHealth(ctx, x + 5, y, h.hp, h.maxHp, 28, 4, true, '#ffd166');
+      ctx.fillStyle = '#6a2c86';
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x - 14, y + 2, 6.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = '800 9px "Alegreya Sans", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(h.level), x - 14, y + 2.5);
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    drawFlyerEnemy(ctx, e, game, time) {
+      const x = e.x * T, gy = e.y * T;
+      const now = game.time;
+      const remaining = e.path.length - e.dist;
+      const alpha = remaining < 0.7 ? Math.max(0, remaining / 0.7) : 1;
+      const y = gy - FLY_HEIGHT + Math.sin(time * 2.2 + e.phase) * 3;
+      const kind = e.def.draw;
+      const flapTime = e.stunUntil > now ? 0.35 : time + e.phase;
+      ctx.globalAlpha = alpha * 0.8;
+      shadow(ctx, x, gy, 9 * e.scale, 3.5 * e.scale, 0.22);
+      if (e.elite) {
+        ctx.strokeStyle = TD.ELITES[e.elite].color;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.ellipse(x, gy, 14 * e.scale, 5 * e.scale, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.globalAlpha = alpha;
+      drawFlyer(ctx, kind, x, y, e.scale, flapTime, null);
+      const over = (color, a) => { ctx.globalAlpha = alpha * a; drawFlyer(ctx, kind, x, y, e.scale, flapTime, color); };
+      if (e.stunUntil > now && e.frozen) over('#cdefff', 0.65);
+      else if (e.slowUntil > now) over('#8fd0ff', 0.35);
+      if (e.burnUntil > now) over('#ff8a3d', 0.3);
+      if (e.flash > 0) over('#ffffff', Math.min(1, e.flash / 0.09) * 0.75);
+      ctx.globalAlpha = 1;
+      if (e.burnUntil > now && Math.random() < 0.35) {
+        this.fx.add({ kind: 'dot', x: x + (Math.random() - 0.5) * 14, y: y + (Math.random() - 0.5) * 10, vx: 0, vy: -40, life: 0, max: 0.4, size: 2.5 + Math.random() * 2, color: 'rgba(255,150,60,0.9)', drag: 1 });
       }
     }
 
@@ -1038,6 +1482,7 @@
       ctx.save();
       ctx.translate(x, y - bob);
       ctx.rotate(stunned ? 0 : Math.sin(step) * 0.07);
+      if (e.flash > 0) ctx.scale(1.08, 0.93);
       const flip = e.dirX < -0.1;
       const base = ctx.globalAlpha;
       sprite(ctx, name, 0, 0, s, flip);
@@ -1189,5 +1634,5 @@
     return c;
   }
 
-  TD.Render = { load, img, Renderer, towerIcon, mapPreview, W, H };
+  TD.Render = { load, img, Renderer, towerIcon, mapPreview, enemyIcon, drawTrap, W, H };
 })();

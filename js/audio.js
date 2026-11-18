@@ -4,9 +4,11 @@
   const TD = window.TD;
   let ctx = null, master = null, noiseBuf = null;
   let muted = false;
+  let volume = 0.8;
+  const level = () => (muted ? 0 : 0.55 * volume);
   const last = {};
   const MIN_GAP = {
-    arrow: 0.05, hit: 0.04, kill: 0.04, orb: 0.06, stoneHit: 0.06, heal: 0.2, coin: 0.06, melee: 0.09, crit: 0.08,
+    arrow: 0.05, hit: 0.04, spike: 0.05, whirlwind: 0.2, keg: 0.08, kill: 0.04, orb: 0.06, stoneHit: 0.06, heal: 0.2, coin: 0.06, melee: 0.09, crit: 0.08,
     lightning: 0.07, flask: 0.06, flaskThrow: 0.06, firepot: 0.08, summon: 0.3, soldierDown: 0.1, meteor: 0.08,
   };
 
@@ -16,7 +18,7 @@
     if (!AC) return null;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.45;
+    master.gain.value = level();
     master.connect(ctx.destination);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
@@ -102,6 +104,14 @@
     freeze: () => { [1568, 2093, 2637, 3136].forEach((f, i) => tone('sine', f, 0, 0.35, 0.05, i * 0.05)); noise('highpass', 4000, 0.4, 0.06); },
     reinforce: () => { [0, 0.16].forEach((d) => { noise('lowpass', 220, 0.12, 0.35, d); tone('sine', 90, 55, 0.12, 0.3, d); }); tone('square', 900, 600, 0.05, 0.03, 0.32); },
     hornCall: () => horn([[196, 0, 0.35], [261.6, 0.3, 0.35], [329.6, 0.6, 0.7]], 0.12),
+    keg: () => { noise('lowpass', 320, 0.6, 0.55); tone('sine', 80, 30, 0.45, 0.35); },
+    spike: () => { tone('square', 500, 200, 0.05, 0.03); noise('bandpass', 2500, 0.05, 0.06, 0, 3); },
+    barricade: () => { noise('bandpass', 700, 0.25, 0.3, 0, 1.5); tone('triangle', 160, 70, 0.25, 0.12); },
+    whirlwind: () => { noise('bandpass', 900, 0.3, 0.16, 0, 0.8); tone('sawtooth', 300, 900, 0.25, 0.03); },
+    heroLevel: () => { [523, 784, 1046, 1318].forEach((f, i) => tone('triangle', f, 0, 0.2, 0.09, i * 0.08)); },
+    heroDown: () => { [392, 330, 262].forEach((f, i) => tone('triangle', f, 0, 0.3, 0.08, i * 0.16)); },
+    trophy: () => { [784, 988, 1175, 1568].forEach((f, i) => tone('sine', f, 0, i === 3 ? 0.5 : 0.15, 0.1, i * 0.09)); },
+    command: () => tone('triangle', 660, 880, 0.08, 0.06),
     error: () => tone('square', 140, 110, 0.12, 0.05),
     click: () => tone('sine', 900, 600, 0.04, 0.05),
   };
@@ -120,7 +130,11 @@
     },
     setMuted(m) {
       muted = m;
-      if (master) master.gain.value = m ? 0 : 0.45;
+      if (master) master.gain.value = level();
+    },
+    setVolume(v) {
+      volume = v;
+      if (master) master.gain.value = level();
     },
     get muted() { return muted; },
   };

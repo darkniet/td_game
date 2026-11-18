@@ -19,22 +19,30 @@ python3 -m http.server 8000   # then open http://localhost:8000
 - **5 maps**: Greenvale Road, Twin Fords, Dunewatch, Ashen Hollow and Frostmarch Pass. Two of them have two entrances.
 - **8 towers**: Archer, Catapult, Wizard, Ballista, Barracks (soldiers block the road), Alchemist (burn + armor corrosion), Chapel (buffs nearby towers) and Windmill (gold each wave).
 - **Specializations**: at level 3, five towers pick one of two branches, each with 2 more ranks: Ranger Lodge / Marksman Spire, Bombard / Trebuchet, Frost Spire / Storm Tower, Scorpion Nest / Dragonslayer, Paladin Order / Berserker Hall.
+- **Hero**: Sir Aldric, a knight you send anywhere on the map. He blocks foes, levels up to 10 and learns Whirlwind and Rallying Cry.
 - **4 abilities**: Meteor Strike, Call to Arms, Winter's Grasp, War Horn.
-- **13 enemy types**, including healers, summoners and three bosses (Warlord, Witch Queen, Iron King).
+- **4 road traps**: Spike Trap, Tar Pit, Powder Keg and Barricade.
+- **16 enemy types**, including healers, summoners, flyers (bats, wyverns) that cross the map along dashed flight lanes, and four bosses (Warlord, Witch Queen, Iron King, Red Dragon).
 - **Royal Armory**: permanent perks bought with Glory, which you earn in every game.
+- **25 trophies** that pay out Glory, and a **Codex** of every foe, tower and trap you've met.
+- **Quality of life**: auto-save with Continue, a full refund when you sell before the next wave, per-tower damage stats and an end-of-battle report, auto-waves, 1×–5× speed, and settings for volume, shake, particles and more.
 
 ### Controls
 
 | Key | Action |
 | --- | --- |
 | `1`–`8` | Pick a tower to build |
+| `Z` `X` `C` `V` | Lay a trap on the road |
 | `Q` `W` `E` `R` | Abilities |
+| `H` | Select the hero (then click the map to move him) |
 | Click | Build / select a tower |
 | `Shift` + click | Keep building the same tower |
 | `U` / `Del` | Upgrade / sell the selected tower |
 | `T` | Cycle the selected tower's targeting |
 | `N` | Call the next wave (early = bonus gold) |
-| `F` | Cycle game speed (1×/2×/3×) |
+| `F` | Cycle game speed (1×/2×/3×/5×) |
+| `A` | Toggle auto-waves |
+| `M` | Mute |
 | `Space` | Pause |
 | `Esc` / right-click | Cancel |
 

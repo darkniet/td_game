@@ -36,8 +36,8 @@ TD.TOWERS = {
     },
   },
   catapult: {
-    name: 'Catapult', key: '2', cost: 120, damage: 'physical', projectile: 'stone', armorPen: 0.3,
-    blurb: 'Lobs boulders that crush whole crowds. Slow to reload.',
+    name: 'Catapult', key: '2', cost: 120, damage: 'physical', projectile: 'stone', armorPen: 0.3, ground: true,
+    blurb: 'Lobs boulders that crush whole crowds. Slow to reload. Cannot hit flying foes.',
     levels: [
       { dmg: 26, rate: 0.42, range: 3.3, splash: 0.95 },
       { cost: 110, dmg: 44, rate: 0.46, range: 3.5, splash: 1.05 },
@@ -136,8 +136,8 @@ TD.TOWERS = {
     },
   },
   alchemist: {
-    name: 'Alchemist', key: '6', cost: 110, damage: 'magic', projectile: 'flask',
-    blurb: 'Hurls flasks of liquid fire. Burning ignores armor; master brews corrode it.',
+    name: 'Alchemist', key: '6', cost: 110, damage: 'magic', projectile: 'flask', ground: true,
+    blurb: 'Hurls flasks of liquid fire. Burning ignores armor; master brews corrode it. Cannot hit flying foes.',
     levels: [
       { dmg: 10, rate: 0.8, range: 2.7, splash: 0.75, burn: 12, burnDur: 3 },
       { cost: 90, dmg: 15, rate: 0.85, range: 2.9, splash: 0.85, burn: 20, burnDur: 3 },
@@ -212,6 +212,14 @@ TD.ENEMIES = {
     name: 'Ironclad', sprite: 'grey_knight', hp: 520, speed: 0.55, armor: 0.7, gold: 32, lives: 3, scale: 0.78, atk: 22,
     blurb: 'A walking fortress. Bring ballistae or wizards.',
   },
+  bat: {
+    name: 'Giant Bat', draw: 'bat', fly: true, hp: 38, speed: 0.95, armor: 0, gold: 6, lives: 1, scale: 0.8,
+    blurb: 'Flaps straight over the fields to the keep. Catapults and alchemists can\u2019t hit it.',
+  },
+  wyvern: {
+    name: 'Wyvern', draw: 'wyvern', fly: true, hp: 260, speed: 0.5, armor: 0.3, magicResist: 0.2, gold: 26, lives: 2, scale: 1.0,
+    blurb: 'A scaled drake that ignores the road. Archers and ballistae bring it down.',
+  },
   warlord: {
     name: 'Warlord', sprite: 'red_king', hp: 2600, speed: 0.45, armor: 0.35, magicResist: 0.2, gold: 200, lives: 10, scale: 1.0, atk: 50,
     boss: true,
@@ -226,6 +234,11 @@ TD.ENEMIES = {
     name: 'Iron King', sprite: 'grey_king', hp: 4200, speed: 0.4, armor: 0.6, magicResist: 0.3, gold: 260, lives: 15, scale: 1.05, atk: 60,
     boss: true,
     blurb: 'Clad in black iron from crown to boot. Bring Dragonslayers.',
+  },
+  dragon: {
+    name: 'Red Dragon', draw: 'dragon', fly: true, hp: 3600, speed: 0.38, armor: 0.4, magicResist: 0.4, gold: 300, lives: 15, scale: 1.6,
+    boss: true,
+    blurb: 'Soars straight for the keep. Only ranged towers can reach it.',
   },
 };
 
@@ -244,19 +257,19 @@ TD.WAVES = [
   [['peasant', 8, 0.9, 0], ['footman', 4, 1.4, 4]],
   [['footman', 6, 1.2, 0], ['outrider', 5, 0.8, 5]],
   [['footman', 8, 1.0, 0], ['knight', 2, 2.5, 6]],
-  [['peasant', 22, 0.4, 0], ['outrider', 4, 0.6, 6]],
+  [['peasant', 18, 0.45, 0], ['bat', 6, 0.8, 5]],
   [['knight', 4, 2.0, 0], ['priest', 2, 2.0, 2], ['footman', 6, 0.9, 8]],
   [['outrider', 12, 0.5, 0], ['berserker', 4, 1.4, 4]],
   [['knight', 6, 1.6, 0], ['priest', 3, 2.2, 3], ['footman', 8, 0.8, 9]],
   [['footman', 10, 0.8, 0], ['warlord', 1, 0, 6]],
   [['shieldbearer', 5, 1.2, 0], ['knight', 7, 1.3, 2], ['priest', 3, 1.6, 4]],
-  [['outrider', 24, 0.35, 0]],
+  [['outrider', 18, 0.35, 0], ['bat', 10, 0.5, 4]],
   [['ironclad', 3, 3.0, 0], ['footman', 8, 0.7, 2], ['berserker', 5, 1.0, 6]],
   [['knight', 10, 1.0, 0], ['shieldbearer', 6, 1.0, 3], ['priest', 4, 2.0, 2]],
   [['outrider', 10, 0.5, 0], ['knight', 8, 1.2, 4], ['warlord', 1, 0, 10]],
   [['peasant', 36, 0.22, 0], ['berserker', 6, 1.0, 3], ['priest', 3, 2.0, 4]],
-  [['ironclad', 6, 2.0, 0], ['necromancer', 2, 4.0, 2], ['priest', 3, 3.0, 1]],
-  [['outrider', 24, 0.3, 0], ['knight', 10, 1.0, 5]],
+  [['ironclad', 6, 2.0, 0], ['necromancer', 2, 4.0, 2], ['priest', 3, 3.0, 1], ['wyvern', 2, 4.0, 6]],
+  [['outrider', 20, 0.3, 0], ['knight', 10, 1.0, 5], ['wyvern', 3, 3.0, 8], ['bat', 10, 0.4, 2]],
   [['ironclad', 8, 1.6, 0], ['shieldbearer', 8, 1.0, 2], ['necromancer', 3, 3.0, 4]],
   [['ironclad', 6, 2.0, 0], ['priest', 6, 1.5, 2], ['warlord', 2, 6.0, 8], ['ironking', 1, 0, 18]],
 ];
@@ -266,11 +279,12 @@ TD.waveHpScale = (w) => 1 + 0.08 * (w - 1) + 0.0035 * (w - 1) * (w - 1);
 
 // Endless waves are generated from a budget of "threat" that grows every wave.
 // [enemy, first wave it can appear, threat per unit]
+// Listed in order of first appearance, since newer types are favoured.
 const ENDLESS_POOL = [
-  ['peasant', 1, 1], ['footman', 2, 2], ['outrider', 4, 1.5], ['knight', 5, 5], ['berserker', 7, 3],
-  ['priest', 8, 3], ['shieldbearer', 9, 3.2], ['ironclad', 13, 10], ['necromancer', 15, 7],
+  ['peasant', 1, 1], ['footman', 2, 2], ['outrider', 4, 1.5], ['knight', 5, 5], ['bat', 5, 3], ['berserker', 7, 3],
+  ['priest', 8, 3], ['shieldbearer', 9, 3.2], ['ironclad', 13, 10], ['wyvern', 14, 14], ['necromancer', 15, 7],
 ];
-const ENDLESS_BOSSES = ['warlord', 'witchqueen', 'ironking'];
+const ENDLESS_BOSSES = ['warlord', 'witchqueen', 'ironking', 'dragon'];
 
 TD.endlessWave = function (w, rand) {
   const boss = w % 10 === 0;
@@ -288,14 +302,16 @@ TD.endlessWave = function (w, rand) {
       if (!used.has(pick[0])) break;
     }
     used.add(pick[0]);
-    const count = Math.max(1, Math.min(60, Math.round(budget / n / pick[2])));
+    // Flyers skip the maze, so they come in smaller flocks.
+    const cap = TD.ENEMIES[pick[0]].fly ? 4 + Math.floor(w / 3) : 60;
+    const count = Math.max(1, Math.min(cap, Math.round(budget / n / pick[2])));
     // Early waves trickle in; later ones arrive in tighter columns.
     const spread = 1 + 1.8 * Math.max(0, (10 - w) / 10);
     const gap = Math.max(0.22, 0.34 * Math.sqrt(pick[2]) * spread * (count > 20 ? 0.75 : 1));
     groups.push([pick[0], count, +gap.toFixed(2), +delay.toFixed(1)]);
     delay += Math.min(count * gap * (w < 10 ? 1 : 0.6), 12);
   }
-  if (boss) groups.push([ENDLESS_BOSSES[(w / 10 - 1) % 3], 1 + Math.floor(w / 40), 5, +(delay * 0.5 + 4).toFixed(1)]);
+  if (boss) groups.push([ENDLESS_BOSSES[(w / 10 - 1) % ENDLESS_BOSSES.length], 1 + Math.floor(w / 40), 5, +(delay * 0.5 + 4).toFixed(1)]);
   return groups;
 };
 
@@ -324,6 +340,69 @@ TD.ABILITIES = {
   },
 };
 TD.ABILITY_ORDER = ['meteor', 'reinforce', 'frost', 'horn'];
+
+// One-off items placed on road tiles. Their strength scales with the current wave.
+TD.TRAPS = {
+  spikes: {
+    name: 'Spike Trap', key: 'z', cost: 40, dmg: 30, uses: 30,
+    blurb: 'Wounds every ground foe that walks over it. Wears out after 30 foes.',
+  },
+  tar: {
+    name: 'Tar Pit', key: 'x', cost: 45, slow: 0.5, duration: 90,
+    blurb: 'Ground foes wade through at half speed. Dries up after 90 seconds.',
+  },
+  keg: {
+    name: 'Powder Keg', key: 'c', cost: 60, dmg: 160, radius: 1.3,
+    blurb: 'Explodes when a foe comes close, blasting everything around it.',
+  },
+  barricade: {
+    name: 'Barricade', key: 'v', cost: 50, hp: 350,
+    blurb: 'Blocks the road until the horde hacks it down. Flyers pass over it.',
+  },
+};
+TD.TRAP_ORDER = ['spikes', 'tar', 'keg', 'barricade'];
+
+// The hero fights on his own, grows stronger as foes fall near him and respawns at the keep.
+TD.HERO = {
+  name: 'Sir Aldric', sprite: 'hero', key: 'h',
+  hp: 380, hpPerLevel: 55, dmg: 20, dmgPerLevel: 5, rate: 1.25, armor: 0.3, speed: 2.3, regen: 10, respawn: 15,
+  // Total experience needed to leave each level (index = current level).
+  xp: [0, 40, 100, 180, 290, 430, 600, 820, 1100, 1450],
+  skills: {
+    whirlwind: { name: 'Whirlwind', level: 1, cooldown: 8, radius: 1.1, mult: 1.6, blurb: 'Spins to strike every foe around him.' },
+    rally: { name: 'Rallying Cry', level: 3, cooldown: 18, radius: 2.0, heal: 0.35, blurb: 'When badly hurt, heals himself and nearby soldiers.' },
+  },
+};
+
+TD.SPEEDS = [1, 2, 3, 5];
+
+TD.ACHIEVEMENTS = [
+  { id: 'first_win', name: 'First Victory', blurb: 'Win any campaign map.', glory: 5 },
+  { id: 'flawless', name: 'Not a Scratch', blurb: 'Win a campaign map without losing a single life.', glory: 10 },
+  { id: 'all_maps', name: 'Defender of the Realm', blurb: 'Win every campaign map.', glory: 25 },
+  { id: 'all_stars', name: 'Star of the Realm', blurb: 'Earn three stars on every campaign map.', glory: 40 },
+  { id: 'frost_win', name: 'Winter Is Over', blurb: 'Win Frostmarch Pass.', glory: 15 },
+  { id: 'purist', name: 'Archery Purist', blurb: 'Win a campaign map building only Archer Towers.', glory: 25 },
+  { id: 'endless20', name: 'Stubborn', blurb: 'Reach wave 20 in Endless.', glory: 10 },
+  { id: 'endless35', name: 'Unbreakable', blurb: 'Reach wave 35 in Endless.', glory: 20 },
+  { id: 'endless50', name: 'Living Legend', blurb: 'Reach wave 50 in Endless.', glory: 40 },
+  { id: 'kills1k', name: 'Slayer', blurb: 'Defeat 1,000 foes in total.', glory: 10 },
+  { id: 'kills10k', name: 'Scourge of the Horde', blurb: 'Defeat 10,000 foes in total.', glory: 30 },
+  { id: 'boss_warlord', name: 'Kingslayer', blurb: 'Defeat the Warlord.', glory: 5 },
+  { id: 'boss_witchqueen', name: 'Witch Hunter', blurb: 'Defeat the Witch Queen.', glory: 10 },
+  { id: 'boss_ironking', name: 'Rust to Rust', blurb: 'Defeat the Iron King.', glory: 10 },
+  { id: 'boss_dragon', name: 'Dragonbane', blurb: 'Defeat the Red Dragon.', glory: 15 },
+  { id: 'skyguard', name: 'Skyguard', blurb: 'Bring down 100 flying foes in total.', glory: 10 },
+  { id: 'trapper', name: 'Trapper', blurb: 'Defeat 100 foes with traps in total.', glory: 10 },
+  { id: 'meteor10', name: 'Extinction Event', blurb: 'Defeat 10 foes with a single Meteor Strike.', glory: 15 },
+  { id: 'hero10', name: 'Hero of the Realm', blurb: 'Raise Sir Aldric to level 10.', glory: 15 },
+  { id: 'specialist', name: 'Specialist', blurb: 'Build all ten tower specializations.', glory: 20 },
+  { id: 'rank5', name: 'Masterwork', blurb: 'Raise any tower to rank five.', glory: 5 },
+  { id: 'builder', name: 'Master Builder', blurb: 'Have 20 towers standing at once.', glory: 10 },
+  { id: 'hoarder', name: 'Treasury Overflowing', blurb: 'Hold 2,000 gold at once.', glory: 10 },
+  { id: 'early_bird', name: 'Eager for Battle', blurb: 'Call 10 waves early in a single game.', glory: 10 },
+  { id: 'armory', name: 'Fully Armed', blurb: 'Master every Royal Armory perk.', glory: 0 },
+];
 
 // Permanent upgrades bought with Glory, earned by playing.
 TD.PERKS = [

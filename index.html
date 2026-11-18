@@ -26,17 +26,18 @@
         <span>Wave <b id="wave">0</b><span id="waves-wrap"> / <span id="waves">20</span></span></span>
       </div>
       <div class="chip" id="mode-chip" style="display:none"></div>
-      <div id="abilities"></div>
       <div class="spacer"></div>
       <div class="seg" id="speed" title="Game speed (F)">
-        <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="3">3×</button>
+        <button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="3">3×</button><button data-speed="5">5×</button>
       </div>
+      <button class="icon-btn" id="btn-auto" title="Auto-call waves as soon as possible (A)">
+        <svg viewBox="0 0 24 24"><path d="M3 6l8 6-8 6zM12 6l8 6-8 6z"/><text x="21" y="23" class="a-label">A</text></svg>
+      </button>
       <button class="icon-btn" id="btn-pause" title="Pause (Space)">
         <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
       </button>
-      <button class="icon-btn" id="btn-sound" title="Sound on/off">
-        <svg viewBox="0 0 24 24" class="on"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8.5a5 5 0 010 7M18.5 6a8.5 8.5 0 010 12" class="stroke"/></svg>
-        <svg viewBox="0 0 24 24" class="off"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16.5 9.5l5 5m0-5l-5 5" class="stroke"/></svg>
+      <button class="icon-btn" id="btn-settings" title="Settings">
+        <svg viewBox="0 0 24 24"><path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7z" fill-rule="evenodd"/></svg>
       </button>
       <button class="btn wave-btn" id="btn-wave">Start Wave 1</button>
     </header>
@@ -50,6 +51,20 @@
           <div id="overlay" class="overlay show">
             <div class="loading">Raising the banners… <span id="load-pct">0%</span></div>
           </div>
+        </div>
+        <div id="command">
+          <button id="hero-card" title="Sir Aldric (H): select, then click the map to send him there">
+            <span class="portrait"><img src="assets/units/hero.png" alt=""><span class="lvl" id="hero-lvl">1</span></span>
+            <span class="hero-txt">
+              <b>Sir Aldric</b>
+              <span class="hbar"><i id="hero-hp"></i></span>
+              <span class="hbar xp"><i id="hero-xp"></i></span>
+            </span>
+            <span class="respawn" id="hero-respawn"></span>
+            <kbd>H</kbd>
+          </button>
+          <div class="group" id="abilities"></div>
+          <div class="group" id="traps"></div>
         </div>
       </div>
 

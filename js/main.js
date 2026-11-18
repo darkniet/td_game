@@ -1,4 +1,4 @@
-// Bootstraps the game: DOM wiring, input, HUD, menus and the main loop.
+// Bootstraps the game: DOM wiring, input, HUD, menus, progression and the main loop.
 'use strict';
 (function () {
   const TD = window.TD;
@@ -11,6 +11,8 @@
     frost: '<svg viewBox="0 0 32 32"><path class="flake" d="M16 3v26M4.7 9.5l22.6 13M4.7 22.5l22.6-13M12 5l4 4 4-4M12 27l4-4 4 4M5 14l5.5 1.5L9 21M27 14l-5.5 1.5L23 21"/></svg>',
     horn: '<svg viewBox="0 0 32 32"><path d="M5 13c8 0 13-4 19-9v24c-6-5-11-9-19-9z"/><rect x="2" y="12" width="5" height="8" rx="2"/><path class="mark" d="M24 4c3 3 4 7 4 12s-1 9-4 12"/></svg>',
   };
+  const DEFAULT_SETTINGS = { volume: 0.8, shake: true, numbers: true, particles: 'normal', hoverRange: true, coins: true, autoWave: false };
+  const STAT_NAMES = { hero: TD.HERO.name, traps: 'Traps', abilities: 'Abilities' };
 
   const store = {
     get(key, fallback) {
@@ -22,15 +24,21 @@
     set(key, value) {
       try { localStorage.setItem('htk.' + key, JSON.stringify(value)); } catch (e) { /* storage unavailable */ }
     },
+    remove(key) {
+      try { localStorage.removeItem('htk.' + key); } catch (e) { /* storage unavailable */ }
+    },
   };
 
+  TD.settings = Object.assign({}, DEFAULT_SETTINGS, store.get('settings', {}));
+
   const ui = {
-    canvas: $('#game'), board: $('#board'), stage: $('#stage'), overlay: $('#overlay'),
-    toasts: $('#toasts'), banner: $('#banner'), abilities: $('#abilities'),
+    canvas: $('#game'), board: $('#board'), stage: $('#stage'), overlay: $('#overlay'), command: $('#command'),
+    toasts: $('#toasts'), banner: $('#banner'), abilities: $('#abilities'), traps: $('#traps'),
     lives: $('#lives'), gold: $('#gold'), wave: $('#wave'), waves: $('#waves'), wavesWrap: $('#waves-wrap'), chip: $('#mode-chip'),
     buildList: $('#build-list'), info: $('#info'), next: $('#next-wave'),
-    waveBtn: $('#btn-wave'), pauseBtn: $('#btn-pause'), soundBtn: $('#btn-sound'),
+    waveBtn: $('#btn-wave'), pauseBtn: $('#btn-pause'), settingsBtn: $('#btn-settings'), autoBtn: $('#btn-auto'),
     speedBtns: [...document.querySelectorAll('#speed button')],
+    heroCard: $('#hero-card'), heroLvl: $('#hero-lvl'), heroHp: $('#hero-hp'), heroXp: $('#hero-xp'), heroRespawn: $('#hero-respawn'),
   };
 
   const renderer = new TD.Render.Renderer(ui.canvas);
@@ -38,18 +46,23 @@
   let inMenu = true;
   let paused = false;
   let speed = store.get('speed', 1);
+  if (!TD.SPEEDS.includes(speed)) speed = 1;
   let menuMode = store.get('mode', 'campaign');
-  let acc = 0, lastT = 0, vtime = 0;
-  const view = { placing: null, hover: null, mouse: null, selected: null, ability: null, rallyFor: null };
+  let acc = 0, lastT = 0, vtime = 0, saveTimer = 0;
+  let overlayReturn = null;
+  const view = { placing: null, trap: null, hover: null, hoverTower: null, mouse: null, selected: null, hero: false, ability: null, rallyFor: null };
   const shown = {};
 
   const fmt = (n) => (n === Infinity ? '∞' : Math.floor(n));
+  const big = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)));
+  const enemySrc = (type) => TD.Render.enemyIcon(type);
 
   // ---- Layout ----------------------------------------------------------------
 
   function fit() {
     const narrow = window.innerWidth <= 860;
-    const w = ui.stage.clientWidth - 20, h = ui.stage.clientHeight - 20;
+    const bar = ui.command.offsetHeight + 12;
+    const w = ui.stage.clientWidth - 20, h = ui.stage.clientHeight - 20 - bar;
     const k = narrow ? w / TD.Render.W : Math.min(w / TD.Render.W, h / TD.Render.H);
     const cw = Math.max(320, Math.floor(TD.Render.W * k)), ch = Math.floor(cw * TD.Render.H / TD.Render.W);
     ui.board.style.width = cw + 'px';
@@ -57,7 +70,7 @@
     renderer.resize(cw, ch);
   }
 
-  // ---- Toasts & banners ---------------------------------------------------------
+  // ---- Toasts, banners, flying coins ----------------------------------------------
 
   function toast(html, kind, ms) {
     const el = document.createElement('div');
@@ -85,7 +98,28 @@
     stat.classList.add(cls);
   }
 
-  const unitSrc = (type) => 'assets/units/' + TD.ENEMIES[type].sprite + '.png';
+  let coinsInFlight = 0;
+  function flyCoin(x, y) {
+    if (!TD.settings.coins || coinsInFlight > 10 || !ui.canvas.animate) return;
+    const r = ui.canvas.getBoundingClientRect(), g = ui.gold.getBoundingClientRect();
+    const sx = r.left + (x / TD.COLS) * r.width, sy = r.top + (y / TD.ROWS) * r.height;
+    const dx = g.left + g.width / 2 - sx, dy = g.top + g.height / 2 - sy;
+    const el = document.createElement('div');
+    el.className = 'fly-coin';
+    el.style.left = sx + 'px';
+    el.style.top = sy + 'px';
+    document.body.appendChild(el);
+    coinsInFlight++;
+    el.animate([
+      { transform: 'translate(-50%, -50%) scale(0.5)', opacity: 0.8 },
+      { transform: `translate(calc(-50% + ${dx * 0.25}px), calc(-50% + ${dy * 0.15 - 50}px)) scale(1.15)`, opacity: 1, offset: 0.3 },
+      { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.7)`, opacity: 1 },
+    ], { duration: 650 + Math.random() * 200, easing: 'cubic-bezier(.45,0,.8,.45)' }).onfinish = () => {
+      el.remove();
+      coinsInFlight--;
+      bump(ui.gold, 'bump');
+    };
+  }
 
   function starStr(n, max) {
     let s = '';
@@ -93,13 +127,12 @@
     return s;
   }
 
-  // ---- Progress (records, glory, perks) -------------------------------------------
+  // ---- Progress: glory, perks, trophies, codex, saves ---------------------------------
 
   const progress = {
     glory: () => store.get('glory', 0),
     perks: () => store.get('perks', {}),
     addGlory(n) { store.set('glory', progress.glory() + n); },
-    perkCost(rank) { return TD.PERK_COSTS[rank]; },
     buy(id) {
       const perks = progress.perks();
       const rank = perks[id] || 0;
@@ -108,6 +141,7 @@
       perks[id] = rank + 1;
       store.set('perks', perks);
       store.set('glory', progress.glory() - cost);
+      if (TD.PERKS.every((p) => (perks[p.id] || 0) >= TD.PERK_COSTS.length)) trophies.unlock('armory');
       return true;
     },
     refund() {
@@ -120,31 +154,141 @@
     },
   };
 
+  // Lifetime counters live in memory and are flushed to storage every few seconds.
+  const trophies = {
+    got: store.get('trophies', {}),
+    life: Object.assign({ kills: 0, flyKills: 0, trapKills: 0, branches: {} }, store.get('lifetime', {})),
+    castKills: {},
+    dirty: false,
+    unlock(id) {
+      if (this.got[id] || (game && game.sandbox && !inMenu)) return;
+      const a = TD.ACHIEVEMENTS.find((x) => x.id === id);
+      if (!a) return;
+      this.got[id] = Date.now();
+      store.set('trophies', this.got);
+      if (a.glory) progress.addGlory(a.glory);
+      TD.Audio.play('trophy');
+      toast(`<span class="trophy-i">🏆</span><span><b>Trophy: ${a.name}</b> ${a.blurb}${a.glory ? ` <b class="glory-i">+${a.glory}</b>` : ''}</span>`, 'gold', 4500);
+    },
+    flush() {
+      if (!this.dirty) return;
+      this.dirty = false;
+      store.set('lifetime', this.life);
+      const l = this.life;
+      if (l.kills >= 1000) this.unlock('kills1k');
+      if (l.kills >= 10000) this.unlock('kills10k');
+      if (l.flyKills >= 100) this.unlock('skyguard');
+      if (l.trapKills >= 100) this.unlock('trapper');
+      if (Object.keys(l.branches).length >= 10) this.unlock('specialist');
+    },
+    // React to simulation events (never in sandbox, where gold and lives are free).
+    onEvent(ev) {
+      if (game.sandbox) return;
+      const l = this.life;
+      switch (ev.type) {
+        case 'kill':
+          l.kills++;
+          if (ev.fly) l.flyKills++;
+          if (ev.source === 'traps') l.trapKills++;
+          if (ev.boss) this.unlock('boss_' + ev.enemy);
+          if (ev.cast) {
+            this.castKills[ev.cast] = (this.castKills[ev.cast] || 0) + 1;
+            if (this.castKills[ev.cast] >= 10) this.unlock('meteor10');
+          }
+          this.dirty = true;
+          break;
+        case 'upgrade':
+          if (ev.branch) { l.branches[ev.tower + ':' + ev.branch] = 1; this.dirty = true; }
+          if (ev.level >= 4) this.unlock('rank5');
+          break;
+        case 'build':
+          if (ev.count >= 20) this.unlock('builder');
+          break;
+        case 'heroLevel':
+          if (ev.level >= 10) this.unlock('hero10');
+          break;
+        case 'bonus':
+          if (game.stats.early >= 10) this.unlock('early_bird');
+          break;
+        case 'wave':
+          if (game.endless) {
+            if (ev.wave >= 20) this.unlock('endless20');
+            if (ev.wave >= 35) this.unlock('endless35');
+            if (ev.wave >= 50) this.unlock('endless50');
+          }
+          break;
+      }
+    },
+    onWin(g, stars) {
+      if (g.mode !== 'campaign') return;
+      this.unlock('first_win');
+      if (g.lives >= g.maxLives) this.unlock('flawless');
+      if (g.map.id === 'frostmarch') this.unlock('frost_win');
+      const types = Object.keys(g.stats.types);
+      if (types.length === 1 && types[0] === 'archer') this.unlock('purist');
+      const best = store.get('best', {});
+      if (TD.MAPS.every((m) => best[m.id] >= 1)) this.unlock('all_maps');
+      if (TD.MAPS.every((m) => best[m.id] >= 3)) this.unlock('all_stars');
+    },
+  };
+
+  const codex = {
+    seen: new Set(store.get('codex', [])),
+    see(type) {
+      if (this.seen.has(type)) return;
+      this.seen.add(type);
+      store.set('codex', [...this.seen]);
+    },
+  };
+
+  const saves = {
+    get: () => store.get('save', null),
+    put() {
+      if (!game || inMenu || game.state !== 'playing') return;
+      store.set('save', { at: Date.now(), name: game.map.name, mode: game.mode, wave: game.wave, data: game.serialize() });
+    },
+    clear: () => store.remove('save'),
+  };
+
   // ---- Screens -----------------------------------------------------------------
 
   function showMenu() {
     inMenu = true;
     paused = false;
+    overlayReturn = null;
     clearModes();
-    if (!game) setGame(TD.MAPS[0], 'campaign');
+    if (!game) setGame(new TD.Game(TD.MAPS[0], { mode: 'campaign' }));
     const best = store.get('best', {});
     const endless = store.get('endless', {});
+    const save = saves.get();
+    const got = Object.keys(trophies.got).length;
     const tabs = Object.entries(TD.MODES).map(([id, m]) => `<button data-mode="${id}" class="${id === menuMode ? 'on' : ''}">${m.name}</button>`).join('');
     ui.overlay.innerHTML = `
       <div class="menu">
         <h1>Hold the Keep</h1>
         <div class="tag-line">The horde marches on the realm. Build towers along the road and let none reach the gate.</div>
+        ${save ? `<button class="continue" data-act="continue">
+          <span class="c-title">Continue</span>
+          <span class="c-sub">${save.name} · ${TD.MODES[save.mode].name} · wave ${save.wave} · ${ago(save.at)}</span>
+        </button>` : ''}
         <div class="menu-bar">
           <div class="seg mode-tabs">${tabs}</div>
-          <button class="btn gold armory-btn" data-act="armory">Royal Armory · <span class="glory-i">${progress.glory()}</span></button>
         </div>
         <div class="mode-blurb">${TD.MODES[menuMode].blurb}</div>
         <div class="maps"></div>
+        <div class="menu-bar small">
+          <button class="btn gold" data-act="armory">Royal Armory · <span class="glory-i">${progress.glory()}</span></button>
+          <button class="btn" data-act="trophies">Trophies · ${got}/${TD.ACHIEVEMENTS.length}</button>
+          <button class="btn" data-act="codex">Codex</button>
+          <button class="btn" data-act="settings">Settings</button>
+        </div>
         <div class="how">
           <span><kbd>1</kbd>–<kbd>8</kbd> towers</span>
+          <span><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd> traps</span>
           <span><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> abilities</span>
+          <span><kbd>H</kbd> hero</span>
           <span><kbd>U</kbd> upgrade · <kbd>Del</kbd> sell · <kbd>T</kbd> target</span>
-          <span><kbd>Space</kbd> pause · <kbd>F</kbd> speed · <kbd>N</kbd> next wave</span>
+          <span><kbd>Space</kbd> pause · <kbd>F</kbd> speed · <kbd>A</kbd> auto-waves · <kbd>N</kbd> next wave</span>
         </div>
         <div class="credit">Art: “Medieval RTS” by <a href="https://kenney.nl" target="_blank" rel="noopener">Kenney</a> (CC0)</div>
       </div>`;
@@ -174,6 +318,11 @@
     refreshAll();
   }
 
+  function ago(t) {
+    const m = Math.round((Date.now() - t) / 60000);
+    return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago';
+  }
+
   function showArmory() {
     const perks = progress.perks();
     const glory = progress.glory();
@@ -192,7 +341,7 @@
       <div class="dialog armory">
         <h2>Royal Armory</h2>
         <div class="lines">Spend <b>Glory</b> on lasting upgrades for every battle. You have <b class="glory-i">${glory}</b>.<br>
-          <small>Earn Glory by winning campaign maps, surviving endless waves, and even by valiant defeats.</small></div>
+          <small>Earn Glory by winning campaign maps, surviving endless waves, earning trophies, and even by valiant defeats.</small></div>
         <div class="perks">${rows}</div>
         <div class="buttons">
           <button class="btn green" data-act="menu">Back to maps</button>
@@ -202,26 +351,172 @@
     ui.overlay.classList.add('show');
   }
 
-  function setGame(map, mode) {
-    game = new TD.Game(map, { mode, perks: mode === 'sandbox' ? {} : progress.perks(), seed: (Math.random() * 1e9) | 0 });
+  function showTrophies() {
+    trophies.flush();
+    const l = trophies.life;
+    const counters = { kills1k: [l.kills, 1000], kills10k: [l.kills, 10000], skyguard: [l.flyKills, 100], trapper: [l.trapKills, 100], specialist: [Object.keys(l.branches).length, 10] };
+    const rows = TD.ACHIEVEMENTS.map((a) => {
+      const got = trophies.got[a.id];
+      const c = counters[a.id];
+      const bar = !got && c ? `<span class="t-bar"><i style="width:${Math.min(100, (c[0] / c[1]) * 100)}%"></i></span><small class="t-count">${big(Math.min(c[0], c[1]))} / ${big(c[1])}</small>` : '';
+      return `<div class="trophy ${got ? 'got' : ''}">
+        <span class="t-icon">${got ? '🏆' : '🔒'}</span>
+        <span class="t-text"><b>${a.name}</b><small>${a.blurb}</small>${bar}</span>
+        ${a.glory ? `<span class="glory-i">${a.glory}</span>` : ''}
+      </div>`;
+    }).join('');
+    const n = Object.keys(trophies.got).length;
+    ui.overlay.innerHTML = `
+      <div class="dialog wide">
+        <h2>Trophies</h2>
+        <div class="lines">${n} of ${TD.ACHIEVEMENTS.length} earned. Each trophy also pays out Glory for the Royal Armory.<br><small>Trophies can't be earned in Sandbox mode.</small></div>
+        <div class="trophies">${rows}</div>
+        <div class="buttons"><button class="btn green" data-act="menu">Back to maps</button></div>
+      </div>`;
+    ui.overlay.classList.add('show');
+  }
+
+  let codexTab = 'foes';
+  function showCodex() {
+    const tabs = [['foes', 'Foes'], ['towers', 'Towers'], ['other', 'Hero & Traps']]
+      .map(([id, name]) => `<button data-codex="${id}" class="${codexTab === id ? 'on' : ''}">${name}</button>`).join('');
+    let body = '';
+    if (codexTab === 'foes') {
+      body = Object.entries(TD.ENEMIES).map(([type, d]) => {
+        if (!codex.seen.has(type)) {
+          return `<div class="entry locked"><span class="e-pic">?</span><span class="e-text"><b>Unknown foe</b><small>Not yet encountered. Keep fighting to learn more.</small></span></div>`;
+        }
+        const tags = [d.boss && 'Boss', d.fly && 'Flying', d.noBlock && 'Unblockable', d.heal && 'Heals allies', d.summon && 'Summons', d.rage && 'Enrages', d.minion && 'Summoned']
+          .filter(Boolean).map((t) => `<span class="tag">${t}</span>`).join('');
+        return `<div class="entry"><span class="e-pic"><img src="${enemySrc(type)}" alt=""></span><span class="e-text">
+          <b>${d.name}</b>${tags ? `<span class="e-tags">${tags}</span>` : ''}<small>${d.blurb}</small>
+          <span class="e-stats">
+            <span>Health <b>${d.hp}</b></span><span>Speed <b>${d.speed}</b></span>
+            <span>Armor <b>${Math.round((d.armor || 0) * 100)}%</b></span><span>Magic resist <b>${Math.round((d.magicResist || 0) * 100)}%</b></span>
+            <span>Lives <b>${d.lives}</b></span><span>Bounty <b>${d.gold}</b></span>
+          </span></span></div>`;
+      }).join('');
+    } else if (codexTab === 'towers') {
+      body = TD.TOWER_ORDER.map((type) => {
+        const d = TD.TOWERS[type];
+        const lv = d.levels.map((l, i) => `<span>Lv ${i + 1}: ${l.dmg ? `${l.dmg} dmg` : l.soldiers ? `${l.soldiers}× ${l.hp} hp` : l.buff ? `+${Math.round(l.buff * 100)}% dmg` : `+${l.income} gold`}${l.range ? ` · ${l.range} range` : ''}${l.cost ? ` · ${l.cost}g` : ''}</span>`).join('');
+        const br = d.branches ? Object.entries(d.branches).map(([, b]) => `<span class="branch-line"><b>${b.name}</b> — ${b.blurb}</span>`).join('') : '';
+        return `<div class="entry"><span class="e-pic" data-tower="${type}"></span><span class="e-text">
+          <b>${d.name}</b><span class="e-tags"><span class="tag">${d.cost} gold</span>${d.ground ? '<span class="tag">Ground only</span>' : ''}</span><small>${d.blurb}</small>
+          <span class="e-levels">${lv}</span>${br}</span></div>`;
+      }).join('');
+    } else {
+      const H = TD.HERO;
+      body = `<div class="entry"><span class="e-pic"><img src="assets/units/hero.png" alt=""></span><span class="e-text">
+          <b>${H.name}</b><span class="e-tags"><span class="tag">Hero</span></span><small>Your champion. Select him with <b>H</b> or by clicking him, then click anywhere to send him there. He blocks foes like a soldier, levels up (max ${H.xp.length}) as foes fall near him, and respawns at the keep.</small>
+          <span class="e-levels">${Object.values(H.skills).map((k) => `<span><b>${k.name}</b> (level ${k.level}): ${k.blurb} ${k.cooldown}s cooldown.</span>`).join('')}</span>
+        </span></div>` + TD.TRAP_ORDER.map((type) => {
+        const d = TD.TRAPS[type];
+        return `<div class="entry"><span class="e-pic" data-trap="${type}"></span><span class="e-text">
+          <b>${d.name}</b><span class="e-tags"><span class="tag">${d.cost} gold</span><span class="tag">Key ${d.key.toUpperCase()}</span></span><small>${d.blurb} Placed on road tiles; flyers are unaffected.</small></span></div>`;
+      }).join('');
+    }
+    ui.overlay.innerHTML = `
+      <div class="dialog wide codex">
+        <h2>Codex</h2>
+        <div class="seg codex-tabs">${tabs}</div>
+        <div class="entries">${body}</div>
+        <div class="buttons"><button class="btn green" data-act="back">Back</button></div>
+      </div>`;
+    for (const el of ui.overlay.querySelectorAll('[data-tower]')) el.appendChild(TD.Render.towerIcon(el.dataset.tower, 0, 52));
+    for (const el of ui.overlay.querySelectorAll('[data-trap]')) el.appendChild(trapIcon(el.dataset.trap, 52));
+    ui.overlay.classList.add('show');
+  }
+
+  function showSettings(from) {
+    overlayReturn = from;
+    const s = TD.settings;
+    const toggle = (key, label, hint) => `<label class="setting toggle"><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ''}</span>
+      <input type="checkbox" data-set="${key}" ${s[key] ? 'checked' : ''}><i></i></label>`;
+    const parts = ['low', 'normal', 'high'].map((p) => `<button data-particles="${p}" class="${s.particles === p ? 'on' : ''}">${p[0].toUpperCase() + p.slice(1)}</button>`).join('');
+    ui.overlay.innerHTML = `
+      <div class="dialog settings">
+        <h2>Settings</h2>
+        <label class="setting"><span><b>Sound volume</b></span><input type="range" min="0" max="100" value="${Math.round(s.volume * 100)}" data-set="volume"></label>
+        <div class="setting"><span><b>Particle effects</b></span><div class="seg">${parts}</div></div>
+        ${toggle('shake', 'Screen shake', 'Explosions and big hits rattle the view.')}
+        ${toggle('numbers', 'Floating numbers', 'Gold and damage text over the battlefield.')}
+        ${toggle('coins', 'Flying coins', 'Coins fly from fallen foes to your purse.')}
+        ${toggle('hoverRange', 'Range on hover', 'Show a tower’s range when the mouse is over it.')}
+        ${toggle('autoWave', 'Auto-call waves', 'Send the next wave as soon as the last one has spawned (with early bonus). Also on the A key.')}
+        <div class="setting danger"><span><b>Reset all progress</b><small>Stars, records, Glory, perks, trophies, codex and the saved game.</small></span>
+          <button class="btn red" data-act="reset-progress">Reset…</button></div>
+        <div class="buttons"><button class="btn green" data-act="close-settings">Done</button></div>
+      </div>`;
+    ui.overlay.classList.add('show');
+  }
+
+  function saveSettings() {
+    store.set('settings', TD.settings);
+    TD.Audio.setVolume(TD.settings.volume);
+    refreshAll();
+  }
+
+  ui.overlay.addEventListener('input', (e) => {
+    const el = e.target.closest('[data-set]');
+    if (!el) return;
+    TD.settings[el.dataset.set] = el.type === 'checkbox' ? el.checked : +el.value / 100;
+    saveSettings();
+    if (el.dataset.set === 'volume') TD.Audio.play('click');
+  });
+
+  function trapIcon(type, size) {
+    const c = document.createElement('canvas');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    c.width = c.height = size * dpr;
+    const ctx = c.getContext('2d');
+    ctx.scale((size / 64) * dpr, (size / 64) * dpr);
+    const def = TD.TRAPS[type];
+    TD.Render.drawTrap(ctx, { type, def, x: 0.5, y: type === 'keg' ? 0.78 : type === 'barricade' ? 0.72 : 0.55, uses: def.uses || 1, until: 99, id: 0, firedT: 9 }, 0, 0);
+    return c;
+  }
+
+  function setGame(g) {
+    game = g;
     renderer.setGame(game);
     acc = 0;
+    trophies.castKills = {};
     for (const k in shown) delete shown[k];
-    buildAbilityBar();
+    for (const t of game.seen) shown[t] = true;
   }
 
   function startGame(map, mode) {
-    setGame(map, mode);
+    setGame(new TD.Game(map, { mode, perks: mode === 'sandbox' ? {} : progress.perks(), seed: (Math.random() * 1e9) | 0 }));
+    beginPlay();
+    const tip = mode === 'sandbox' ? 'Sandbox: gold and lives are unlimited. Send waves whenever you like.'
+      : mode === 'endless' ? 'Endless: how many waves can you hold? Elite foes join from wave 12.'
+        : 'Build towers beside the road, then press <b>Start Wave 1</b>. Press <b>H</b> to command your hero.';
+    toast(`<span>${tip}</span>`, '', 5000);
+    saves.put();
+  }
+
+  function continueGame() {
+    const save = saves.get();
+    const g = save && TD.Game.restore(save.data);
+    if (!g) {
+      saves.clear();
+      toast('That saved game could not be loaded.', 'bad', 2500);
+      showMenu();
+      return;
+    }
+    setGame(g);
+    beginPlay();
+    toast(`<span>Welcome back! ${g.map.name}, wave ${g.wave}.</span>`, '', 3000);
+  }
+
+  function beginPlay() {
     inMenu = false;
     paused = false;
+    overlayReturn = null;
     clearModes();
     ui.overlay.classList.remove('show');
     ui.overlay.innerHTML = '';
     ui.toasts.innerHTML = '';
-    const tip = mode === 'sandbox' ? 'Sandbox: gold and lives are unlimited. Send waves whenever you like.'
-      : mode === 'endless' ? 'Endless: how many waves can you hold? Elite foes join from wave 12.'
-        : 'Build towers beside the road, then press <b>Start Wave 1</b>.';
-    toast(`<span>${tip}</span>`, '', 5000);
     refreshAll();
   }
 
@@ -230,6 +525,7 @@
     paused = p;
     ui.pauseBtn.classList.toggle('active', p);
     if (p) {
+      saves.put();
       ui.overlay.innerHTML = `
         <div class="dialog">
           <h2>Paused</h2>
@@ -237,7 +533,8 @@
           <div class="buttons">
             <button class="btn green" data-act="resume">Resume</button>
             <button class="btn" data-act="restart">Restart</button>
-            <button class="btn" data-act="menu">${game.endless && game.wave > 1 && !game.sandbox ? 'Retreat' : 'Choose map'}</button>
+            <button class="btn" data-act="pause-settings">Settings</button>
+            <button class="btn" data-act="menu">${game.endless && game.wave > 1 && !game.sandbox ? 'Retreat' : 'Save & quit'}</button>
           </div>
         </div>`;
       ui.overlay.classList.add('show');
@@ -253,11 +550,23 @@
     return held + 5 * Math.floor(held / 10);
   }
 
+  function battleReport(g) {
+    const rows = Object.entries(g.damageBy).filter(([, v]) => v.dmg > 0 || v.kills > 0).sort((a, b) => b[1].dmg - a[1].dmg);
+    if (!rows.length) return '';
+    const top = rows[0][1].dmg || 1;
+    return `<div class="report"><div class="report-title">Battle report</div>${rows.map(([key, v]) => `
+      <div class="r-row"><span class="r-name">${STAT_NAMES[key] || TD.TOWERS[key].name}</span>
+        <span class="r-bar"><i style="width:${Math.max(2, (v.dmg / top) * 100)}%"></i></span>
+        <span class="r-val">${big(v.dmg)} dmg · ${v.kills} kills</span></div>`).join('')}</div>`;
+  }
+
   function showResult() {
     const r = game.result();
     const map = game.map;
     const glory = gloryFor(game);
     if (glory) progress.addGlory(glory);
+    saves.clear();
+    trophies.flush();
     let record = '';
     if (r.won) {
       const best = store.get('best', {});
@@ -265,6 +574,7 @@
         best[map.id] = r.stars;
         store.set('best', best);
       }
+      trophies.onWin(game, r.stars);
     } else if (game.mode === 'endless') {
       const endless = store.get('endless', {});
       const prev = endless[map.id] || 0;
@@ -283,14 +593,15 @@
       : game.endless ? `You held ${map.name} until wave <b>${game.wave}</b>. ${record}`
         : `The horde overran the gate on wave <b>${game.wave}</b>.`;
     ui.overlay.innerHTML = `
-      <div class="dialog ${r.won ? 'win' : 'lose'}">
+      <div class="dialog result ${r.won ? 'win' : 'lose'}">
         <h2>${title}</h2>
         ${r.won ? `<div class="big-stars">${starStr(r.stars)}</div>` : ''}
         <div class="lines">
           ${line}<br>
-          Foes slain <b>${game.stats.kills}</b>${game.endless ? '' : ` · Lives left <b>${game.lives}/${game.maxLives}</b>`}
+          Foes slain <b>${game.stats.kills}</b>${game.endless ? '' : ` · Lives left <b>${game.lives}/${game.maxLives}</b>`} · Hero level <b>${game.hero.level}</b>
           ${glory ? `<div class="glory-line">+<span class="glory-i">${glory}</span> Glory for the Royal Armory</div>` : ''}
         </div>
+        ${battleReport(game)}
         <div class="buttons">
           ${r.won && nextMap ? `<button class="btn gold" data-act="next">Next: ${nextMap.name}</button>` : ''}
           ${r.won ? '<button class="btn" data-act="endless">Try Endless here</button>' : ''}
@@ -301,16 +612,18 @@
     ui.overlay.classList.add('show');
   }
 
-  // Leaving an endless run early still banks the waves you held.
+  // Retreating from an endless run banks the waves you held; other modes keep their save.
   function leaveToMenu() {
     if (game && !inMenu && game.mode === 'endless' && game.state === 'playing' && game.wave > 1) {
       game.state = 'lost';
       showResult();
       return;
     }
+    saves.put();
     showMenu();
   }
 
+  let resetArmed = false;
   ui.overlay.addEventListener('click', (e) => {
     const modeBtn = e.target.closest('[data-mode]');
     if (modeBtn) {
@@ -326,6 +639,20 @@
       showArmory();
       return;
     }
+    const tab = e.target.closest('[data-codex]');
+    if (tab) {
+      codexTab = tab.dataset.codex;
+      TD.Audio.play('click');
+      showCodex();
+      return;
+    }
+    const part = e.target.closest('[data-particles]');
+    if (part) {
+      TD.settings.particles = part.dataset.particles;
+      saveSettings();
+      showSettings(overlayReturn);
+      return;
+    }
     const act = e.target.closest('[data-act]');
     if (!act) return;
     TD.Audio.unlock();
@@ -334,13 +661,38 @@
     if (a === 'resume') setPaused(false);
     else if (a === 'restart') startGame(game.map, game.mode);
     else if (a === 'menu') { if (paused) { paused = false; leaveToMenu(); } else showMenu(); }
+    else if (a === 'continue') continueGame();
     else if (a === 'next') startGame(TD.MAPS[TD.MAPS.indexOf(game.map) + 1], 'campaign');
     else if (a === 'endless') startGame(game.map, 'endless');
     else if (a === 'armory') showArmory();
+    else if (a === 'trophies') showTrophies();
+    else if (a === 'codex') showCodex();
+    else if (a === 'back') { if (overlayReturn === 'pause') setPaused(true); else showMenu(); }
+    else if (a === 'settings') showSettings('menu');
+    else if (a === 'pause-settings') showSettings('pause');
     else if (a === 'refund') { progress.refund(); showArmory(); }
+    else if (a === 'close-settings') {
+      resetArmed = false;
+      if (overlayReturn === 'pause') setPaused(true);
+      else if (overlayReturn === 'game') { overlayReturn = null; paused = false; ui.overlay.classList.remove('show'); refreshAll(); }
+      else showMenu();
+    } else if (a === 'reset-progress') {
+      if (!resetArmed) {
+        resetArmed = true;
+        act.textContent = 'Click again to wipe everything';
+        return;
+      }
+      for (const k of ['best', 'endless', 'glory', 'perks', 'trophies', 'lifetime', 'codex', 'save']) store.remove(k);
+      trophies.got = {};
+      trophies.life = { kills: 0, flyKills: 0, trapKills: 0, branches: {} };
+      codex.seen = new Set();
+      resetArmed = false;
+      toast('All progress has been reset.', 'bad', 2500);
+      showSettings(overlayReturn);
+    }
   });
 
-  // ---- Build cards ---------------------------------------------------------------
+  // ---- Build cards, traps, abilities ---------------------------------------------------
 
   const cards = {};
   function buildCards() {
@@ -360,32 +712,30 @@
     }
   }
 
-  function clearModes() {
-    view.placing = view.selected = view.ability = view.rallyFor = null;
-  }
-
-  function togglePlacing(type) {
-    if (inMenu || !game || game.state !== 'playing') return;
-    if (view.placing === type) {
-      view.placing = null;
-    } else {
-      clearModes();
-      view.placing = type;
-      if (game.gold < game.towerCost(type)) toast(`Not enough gold for a <b>${TD.TOWERS[type].name}</b> yet.`, 'bad', 1800);
+  const trapBtns = {};
+  function buildTrapBar() {
+    for (const type of TD.TRAP_ORDER) {
+      const def = TD.TRAPS[type];
+      const b = document.createElement('button');
+      b.className = 'act trap';
+      b.title = `${def.name} (${def.key.toUpperCase()}): ${def.blurb}`;
+      b.innerHTML = `<span class="cost">${def.cost}</span><kbd>${def.key.toUpperCase()}</kbd>`;
+      b.prepend(trapIcon(type, 34));
+      b.addEventListener('click', () => {
+        TD.Audio.unlock();
+        toggleTrap(type);
+      });
+      ui.traps.appendChild(b);
+      trapBtns[type] = b;
     }
-    TD.Audio.play('click');
-    refreshAll();
   }
-
-  // ---- Abilities ----------------------------------------------------------------------
 
   const abilityBtns = {};
   function buildAbilityBar() {
-    if (ui.abilities.children.length) return;
     for (const id of TD.ABILITY_ORDER) {
       const a = TD.ABILITIES[id];
       const b = document.createElement('button');
-      b.className = 'ability ab-' + id;
+      b.className = 'act ability ab-' + id;
       b.title = `${a.name} (${a.key.toUpperCase()}): ${a.blurb} Recharges in ${a.cooldown}s.`;
       b.innerHTML = `${ABILITY_ICONS[id]}<span class="cd"></span><kbd>${a.key.toUpperCase()}</kbd>`;
       b.addEventListener('click', () => {
@@ -397,8 +747,50 @@
     }
   }
 
+  function clearModes() {
+    view.placing = view.trap = view.selected = view.ability = view.rallyFor = null;
+    view.hero = false;
+  }
+
+  const playing = () => !inMenu && !paused && game && game.state === 'playing';
+
+  function togglePlacing(type) {
+    if (!playing()) return;
+    if (view.placing === type) {
+      view.placing = null;
+    } else {
+      clearModes();
+      view.placing = type;
+      if (game.gold < game.towerCost(type)) toast(`Not enough gold for a <b>${TD.TOWERS[type].name}</b> yet.`, 'bad', 1800);
+    }
+    TD.Audio.play('click');
+    refreshAll();
+  }
+
+  function toggleTrap(type) {
+    if (!playing()) return;
+    if (view.trap === type) {
+      view.trap = null;
+    } else {
+      clearModes();
+      view.trap = type;
+      if (game.gold < game.trapCost(type)) toast(`Not enough gold for a <b>${TD.TRAPS[type].name}</b> yet.`, 'bad', 1800);
+    }
+    TD.Audio.play('click');
+    refreshAll();
+  }
+
+  function toggleHero() {
+    if (!playing()) return;
+    const was = view.hero;
+    clearModes();
+    view.hero = !was;
+    TD.Audio.play(view.hero ? 'command' : 'click');
+    refreshAll();
+  }
+
   function useAbility(id) {
-    if (inMenu || paused || !game || game.state !== 'playing') return;
+    if (!playing()) return;
     const a = TD.ABILITIES[id];
     if (!game.abilityReady(id)) {
       TD.Audio.play('error');
@@ -417,17 +809,27 @@
     refreshAll();
   }
 
-  let abilityKey = '';
-  function refreshAbilities() {
+  let barKey = '';
+  function refreshBar() {
     if (!game) return;
+    const h = game.hero;
+    const next = game.heroNextXp();
+    const prev = TD.HERO.xp[h.level - 1] || 0;
+    ui.heroLvl.textContent = h.level;
+    ui.heroHp.style.width = (h.alive ? (h.hp / h.maxHp) * 100 : 0) + '%';
+    ui.heroXp.style.width = (next == null ? 100 : ((h.xp - prev) / (next - prev)) * 100) + '%';
+    ui.heroRespawn.textContent = h.alive ? '' : Math.ceil(Math.max(0, h.respawn));
+    ui.heroCard.classList.toggle('dead', !h.alive);
+    ui.heroCard.classList.toggle('on', view.hero);
     let key = '';
     for (const id of TD.ABILITY_ORDER) {
       const st = game.abilities[id];
       const frac = st.cd > 0 ? st.cd / (TD.ABILITIES[id].cooldown * game.mods.cooldown) : 0;
       key += id + frac.toFixed(2) + (view.ability === id) + ',';
     }
-    if (key === abilityKey) return;
-    abilityKey = key;
+    for (const type of TD.TRAP_ORDER) key += type + (view.trap === type) + (game.gold >= game.trapCost(type));
+    if (key === barKey) return;
+    barKey = key;
     for (const id of TD.ABILITY_ORDER) {
       const b = abilityBtns[id], st = game.abilities[id];
       const frac = st.cd > 0 ? st.cd / (TD.ABILITIES[id].cooldown * game.mods.cooldown) : 0;
@@ -435,6 +837,12 @@
       b.classList.toggle('cooling', frac > 0);
       b.classList.toggle('on', view.ability === id);
       b.querySelector('.cd').textContent = frac > 0 ? Math.ceil(st.cd) : '';
+    }
+    for (const type of TD.TRAP_ORDER) {
+      const b = trapBtns[type];
+      b.classList.toggle('on', view.trap === type);
+      b.classList.toggle('poor', game.gold < game.trapCost(type));
+      b.querySelector('.cost').textContent = game.sandbox ? 'Free' : game.trapCost(type);
     }
   }
 
@@ -487,7 +895,7 @@
     return `<dl class="stats">${html}</dl>`;
   }
 
-  const kindLabel = (def) => (def.kind === 'support' ? 'support' : def.kind === 'economy' ? 'economy' : def.kind === 'barracks' ? 'melee' : def.damage + ' damage');
+  const kindLabel = (def) => (def.kind === 'support' ? 'support' : def.kind === 'economy' ? 'economy' : def.kind === 'barracks' ? 'melee' : def.damage + ' damage') + (def.ground ? ' · ground only' : '');
 
   let infoKey = '';
   function refreshInfo() {
@@ -495,13 +903,20 @@
     let key;
     if (inMenu || !game) key = 'none';
     else if (view.placing) key = 'p' + view.placing + (game.gold >= game.towerCost(view.placing));
+    else if (view.trap) key = 'trap' + view.trap;
+    else if (view.hero) key = 'hero' + game.hero.level;
     else if (t) {
       const branches = game.canBranch(t) ? Object.keys(t.def.branches).map((b) => game.gold >= game.branchCost(t, b)).join() : '';
-      key = ['t', t.id, game.tier(t), t.mode, game.gold >= (game.upgradeCost(t) ?? Infinity), branches, game.state, !!view.rallyFor].join();
+      key = ['t', t.id, game.tier(t), t.mode, game.gold >= (game.upgradeCost(t) ?? Infinity), branches, game.state, !!view.rallyFor, game.fullRefund(t), game.sellValue(t)].join();
     } else key = 'hint';
-    if (key === infoKey) return;
-    infoKey = key;
+    if (key !== infoKey) {
+      infoKey = key;
+      renderInfo(t);
+    }
+    refreshLiveInfo(t);
+  }
 
+  function renderInfo(t) {
     if (view.placing) {
       const def = TD.TOWERS[view.placing];
       ui.info.innerHTML = `
@@ -510,6 +925,34 @@
         ${statRows(def, def.levels[0])}
         <p class="tip">Click a highlighted tile to build. <b>Shift</b>+click keeps building. <b>Esc</b> or right-click cancels.</p>`;
       ui.info.querySelector('.head').prepend(TD.Render.towerIcon(view.placing, 0, 56));
+      return;
+    }
+    if (view.trap) {
+      const def = TD.TRAPS[view.trap];
+      ui.info.innerHTML = `
+        <div class="head"><div><h3>${def.name}</h3><div class="sub"><span class="coin-i">${fmt(game.trapCost(view.trap))}</span> · trap</div></div></div>
+        <p>${def.blurb}</p>
+        <p class="tip">Click a road tile to lay it. Traps grow stronger in later waves. Flyers pass over them.</p>`;
+      ui.info.querySelector('.head').prepend(trapIcon(view.trap, 56));
+      return;
+    }
+    if (view.hero) {
+      const H = TD.HERO, h = game.hero;
+      const skills = Object.values(H.skills).map((k) => `<div class="skill ${h.level >= k.level ? '' : 'locked'}">
+        <b>${k.name}</b> <small>${h.level >= k.level ? `${k.cooldown}s cooldown` : `unlocks at level ${k.level}`}</small><span>${k.blurb}</span></div>`).join('');
+      ui.info.innerHTML = `
+        <div class="head"><span class="hero-pic"><img src="assets/units/hero.png" alt=""></span><div><h3>${H.name}</h3><div class="sub">Level ${h.level} hero · melee</div></div></div>
+        <div class="xpbar"><i data-live="xp"></i><span data-live="xptext"></span></div>
+        <dl class="stats">
+          <dt>Health</dt><dd data-live="hp"></dd>
+          <dt>Damage</dt><dd>${Math.round(h.dmg)}</dd>
+          <dt>Attacks / sec</dt><dd>${H.rate}</dd>
+          <dt>Armor</dt><dd>${pct(H.armor)}</dd>
+          <dt>Regeneration / sec</dt><dd>${H.regen}</dd>
+          <dt>Damage dealt</dt><dd data-live="hdmg"></dd>
+        </dl>
+        <div class="skills">${skills}</div>
+        <p class="tip">Click anywhere on the map to send him there. He levels up as foes fall near him and respawns at the keep.</p>`;
       return;
     }
     if (t) {
@@ -533,9 +976,11 @@
             </button>`;
           }).join('') + '</div>';
       }
+      const full = game.fullRefund(t);
       ui.info.innerHTML = `
         <div class="head"><div><h3>${game.towerName(t)}</h3><div class="stars">${starStr(tier + 1, maxTier)}</div><div class="sub">${t.branch ? def.name + ' · ' : ''}${kindLabel(def)}</div></div></div>
         ${statRows(def, s, next)}
+        ${def.kind === 'economy' || def.kind === 'support' ? '' : '<div class="live-stats" data-live="tstats"></div>'}
         ${branchHtml}
         ${attacks ? `<div class="target-row"><span>Target</span><div class="seg">${modes}</div></div>` : ''}
         ${def.kind === 'barracks' ? `<button class="btn rally-btn ${view.rallyFor ? 'on' : ''}" data-act="rally">${view.rallyFor ? 'Click the road to set the rally point…' : 'Move rally point'}</button>` : ''}
@@ -543,7 +988,7 @@
           ${game.canBranch(t) ? '' : `<button class="btn gold" data-act="upgrade" ${cost == null || game.gold < cost ? 'disabled' : ''}>
             ${cost == null ? 'Max level' : 'Upgrade'}${cost != null ? `<small><span class="coin-i">${fmt(cost)}</span> · U</small>` : ''}
           </button>`}
-          <button class="btn red" data-act="sell">Sell<small><span class="coin-i">${game.sandbox ? 0 : game.sellValue(t)}</span> · Del</small></button>
+          <button class="btn red ${full ? 'refund' : ''}" data-act="sell">${full ? 'Undo' : 'Sell'}<small><span class="coin-i">${game.sellValue(t)}</span>${full ? ' · full refund' : ' · Del'}</small></button>
         </div>`;
       ui.info.querySelector('.head').prepend(TD.Render.towerIcon(t.type, tier, 56, t.branch));
       for (const el of ui.info.querySelectorAll('[data-icon]')) el.appendChild(TD.Render.towerIcon(t.type, 3, 40, el.dataset.icon));
@@ -552,9 +997,25 @@
     ui.info.innerHTML = `
       <h2>Orders</h2>
       <p>Pick a tower and build it beside the road. Click a tower to upgrade it, change its target or sell it.</p>
-      <p class="tip">At level 3 most towers choose one of <b>two specializations</b> with two more ranks.</p>
-      <p class="tip"><b>Armor</b> blunts arrows, boulders and bolts. <b>Magic</b> ignores it. <b>Burning</b> ignores everything.</p>
-      <p class="tip">Use abilities <b>Q W E R</b> in a pinch. Calling a wave early earns bonus gold.</p>`;
+      <p class="tip">Press <b>H</b> (or click Sir Aldric) to command your hero. Lay <b>traps</b> on the road with <b>Z X C V</b>.</p>
+      <p class="tip"><b>Armor</b> blunts arrows, boulders and bolts. <b>Magic</b> ignores it. <b>Flyers</b> follow the dashed lanes and dodge catapults, alchemists, soldiers and traps.</p>
+      <p class="tip">Changed your mind? Selling refunds <b>everything</b> spent before the next wave starts.</p>`;
+  }
+
+  // Numbers that change every frame are patched in place instead of rebuilding the panel.
+  function refreshLiveInfo(t) {
+    if (view.hero && game) {
+      const h = game.hero, next = game.heroNextXp(), prev = TD.HERO.xp[h.level - 1] || 0;
+      const set = (k, v) => { const el = ui.info.querySelector(`[data-live="${k}"]`); if (el) el.textContent = v; };
+      const xp = ui.info.querySelector('[data-live="xp"]');
+      if (xp) xp.style.width = (next == null ? 100 : ((h.xp - prev) / (next - prev)) * 100) + '%';
+      set('xptext', next == null ? 'Max level' : `XP ${Math.floor(h.xp)} / ${next}`);
+      set('hp', h.alive ? `${Math.ceil(h.hp)} / ${h.maxHp}` : `Respawning in ${Math.ceil(h.respawn)}s`);
+      set('hdmg', `${big(h.dmgDealt)} · ${h.kills} kills`);
+    } else if (t) {
+      const el = ui.info.querySelector('[data-live="tstats"]');
+      if (el) el.textContent = `Damage dealt ${big(t.dmgDealt)} · ${t.kills} kills`;
+    }
   }
 
   ui.info.addEventListener('click', (e) => {
@@ -564,7 +1025,7 @@
     if (mode) {
       t.mode = mode.dataset.mode;
       TD.Audio.play('click');
-      refreshInfo();
+      infoKey = '';
       return;
     }
     const br = e.target.closest('[data-branch]');
@@ -619,8 +1080,8 @@
     for (const [type, n] of groups) counts[type] = (counts[type] || 0) + n;
     let html = Object.entries(counts).map(([type, n]) => {
       const def = TD.ENEMIES[type];
-      const tag = def.boss ? '<span class="tag boss">Boss</span>' : !game.seen.has(type) ? '<span class="tag">New</span>' : '';
-      return `<div class="foe" title="${def.name}: ${def.blurb}"><span class="pic"><img src="${unitSrc(type)}" alt=""></span><span class="n">×${n}</span><span class="nm">${def.name}</span>${tag}</div>`;
+      const tag = def.boss ? '<span class="tag boss">Boss</span>' : !game.seen.has(type) ? '<span class="tag">New</span>' : def.fly ? '<span class="tag fly">Flying</span>' : '';
+      return `<div class="foe" title="${def.name}: ${def.blurb}"><span class="pic"><img src="${enemySrc(type)}" alt=""></span><span class="n">×${n}</span><span class="nm">${def.name}</span>${tag}</div>`;
     }).join('');
     const elite = game.endless ? TD.eliteChance(game.wave + 1) : 0;
     if (elite) html += `<div class="muted elite-note">${Math.round(elite * 100)}% chance each foe is an elite</div>`;
@@ -634,13 +1095,14 @@
     if (!game) return;
     const gold = game.gold === Infinity ? Infinity : Math.floor(game.gold);
     if (gold !== lastGold) {
-      if (lastGold != null && gold > lastGold && !inMenu) bump(ui.gold, 'bump');
+      if (lastGold != null && gold > lastGold && !inMenu && !TD.settings.coins) bump(ui.gold, 'bump');
       ui.gold.textContent = fmt(gold);
       lastGold = gold;
       for (const type of TD.TOWER_ORDER) {
         cards[type].classList.toggle('poor', gold < game.towerCost(type));
         cards[type].querySelector('.cost').textContent = game.sandbox ? 'Free' : fmt(game.towerCost(type));
       }
+      if (!game.sandbox && !inMenu && gold >= 2000) trophies.unlock('hoarder');
     }
     if (game.lives !== lastLives) {
       if (lastLives != null && game.lives < lastLives) bump(ui.lives, 'hurt');
@@ -684,20 +1146,20 @@
       ui.waveBtn.disabled = !enabled;
       ui.waveBtn.classList.toggle('pulse', pulse);
     }
-    ui.abilities.style.display = inMenu ? 'none' : '';
-    refreshAbilities();
+    ui.command.style.visibility = inMenu ? 'hidden' : '';
+    refreshBar();
     refreshInfo();
     refreshNext();
   }
 
   function refreshAll() {
-    infoKey = nextKey = waveLabel = abilityKey = chipKey = '';
+    infoKey = nextKey = waveLabel = barKey = chipKey = '';
     lastGold = lastLives = null;
     refreshHud();
     ui.speedBtns.forEach((b) => b.classList.toggle('on', +b.dataset.speed === speed));
-    ui.soundBtn.classList.toggle('muted', TD.Audio.muted);
+    ui.autoBtn.classList.toggle('active', !!TD.settings.autoWave);
     ui.pauseBtn.classList.toggle('active', paused);
-    ui.canvas.classList.toggle('placing', !!(view.placing || view.ability || view.rallyFor));
+    ui.canvas.classList.toggle('placing', !!(view.placing || view.trap || view.ability || view.rallyFor || view.hero));
   }
 
   // ---- Simulation events ---------------------------------------------------------------
@@ -708,6 +1170,7 @@
   function processEvents() {
     for (const ev of game.events) {
       renderer.handle(ev);
+      trophies.onEvent(ev);
       switch (ev.type) {
         case 'fire': if (FIRE_SOUND[ev.kind]) TD.Audio.play(FIRE_SOUND[ev.kind]); break;
         case 'lightning': TD.Audio.play('lightning'); break;
@@ -716,15 +1179,37 @@
         case 'crit': TD.Audio.play('crit'); break;
         case 'chain': TD.Audio.play('chain'); break;
         case 'melee': TD.Audio.play('melee'); break;
-        case 'kill': TD.Audio.play(ev.boss ? 'upgrade' : 'kill'); break;
+        case 'kill':
+          TD.Audio.play(ev.boss ? 'upgrade' : 'kill');
+          flyCoin(ev.x, ev.y - (ev.fly ? 0.55 : 0.2));
+          break;
         case 'heal': TD.Audio.play('heal'); break;
         case 'summon': TD.Audio.play('summon'); break;
         case 'leak': TD.Audio.play('leak'); break;
         case 'build': TD.Audio.play('build'); break;
+        case 'trap': TD.Audio.play('build'); break;
+        case 'spike': TD.Audio.play('spike'); break;
+        case 'keg': TD.Audio.play('keg'); break;
+        case 'barricadeDown':
+          TD.Audio.play('barricade');
+          toast('A barricade has been smashed!', 'bad', 1600);
+          break;
         case 'upgrade': TD.Audio.play('upgrade'); break;
         case 'sell': TD.Audio.play('sell'); break;
         case 'income': TD.Audio.play('coin'); break;
-        case 'soldierDown': if (!ev.expired) TD.Audio.play('soldierDown'); break;
+        case 'whirlwind': TD.Audio.play('whirlwind'); break;
+        case 'rallyCry': TD.Audio.play('heal'); break;
+        case 'heroMove': TD.Audio.play('command'); break;
+        case 'heroLevel':
+          TD.Audio.play('heroLevel');
+          if (ev.level === TD.HERO.skills.rally.level) toast(`<span><b>${TD.HERO.name}</b> learned <b>Rallying Cry</b>!</span>`, 'gold', 3000);
+          break;
+        case 'soldierDown':
+          if (ev.hero) {
+            TD.Audio.play('heroDown');
+            toast(`<span><b>${TD.HERO.name}</b> has fallen! He will return to the keep shortly.</span>`, 'bad', 2500);
+          } else if (!ev.expired) TD.Audio.play('soldierDown');
+          break;
         case 'meteor': TD.Audio.play('meteor'); break;
         case 'cast':
           TD.Audio.play(CAST_SOUND[ev.ability]);
@@ -743,18 +1228,20 @@
           const groups = game.wavesFor(ev.wave);
           const bossType = groups.map(([type]) => type).find((type) => TD.ENEMIES[type].boss);
           TD.Audio.play(bossType ? 'boss' : 'wave');
-          if (bossType) banner(`Wave ${ev.wave}`, `The ${TD.ENEMIES[bossType].name} rides to battle!`, true);
+          if (bossType) banner(`Wave ${ev.wave}`, `The ${TD.ENEMIES[bossType].name} ${TD.ENEMIES[bossType].fly ? 'takes to the sky' : 'rides to battle'}!`, true);
           else banner(`Wave ${ev.wave}`, ev.wave === game.totalWaves ? 'The final assault!' : '');
           if (game.endless && ev.wave === 12) {
             toast('<span><b>Elite foes appear!</b> Coloured rings mark giant, swift, armored and regenerating foes. They pay double.</span>', 'bad', 6000);
           }
+          saves.put();
           break;
         }
         case 'newEnemy': {
           const def = TD.ENEMIES[ev.enemy];
+          codex.see(ev.enemy);
           if (game.wave > 1 && !shown[ev.enemy] && !def.minion) {
             shown[ev.enemy] = true;
-            toast(`<img src="${unitSrc(ev.enemy)}" alt=""><span><b>New foe: ${def.name}.</b> ${def.blurb}</span>`, def.boss ? 'bad' : '', 5200);
+            toast(`<img src="${enemySrc(ev.enemy)}" alt=""><span><b>New foe: ${def.name}.</b> ${def.blurb}</span>`, def.boss ? 'bad' : '', 4200);
           }
           break;
         }
@@ -762,6 +1249,7 @@
         case 'lost': {
           TD.Audio.play(ev.type === 'won' ? 'win' : 'lose');
           const ended = game;
+          saves.clear();
           setTimeout(() => { if (game === ended && !inMenu) showResult(); }, 900);
           break;
         }
@@ -777,19 +1265,22 @@
     return { x: ((e.clientX - r.left) / r.width) * TD.COLS, y: ((e.clientY - r.top) / r.height) * TD.ROWS };
   }
 
+  const overHero = (m) => game.hero.alive && Math.hypot(m.x - game.hero.x, m.y - (game.hero.y - 0.35)) < 0.45;
+
   ui.canvas.addEventListener('pointermove', (e) => {
     const m = worldFromEvent(e);
     view.mouse = m;
     view.hover = { x: Math.floor(m.x), y: Math.floor(m.y) };
     if (game && !inMenu) {
-      const busy = view.placing || view.ability || view.rallyFor;
-      ui.canvas.classList.toggle('pointing', !busy && !!game.towerAt(view.hover.x, view.hover.y));
+      view.hoverTower = game.towerAt(view.hover.x, view.hover.y);
+      const busy = view.placing || view.trap || view.ability || view.rallyFor;
+      ui.canvas.classList.toggle('pointing', !busy && (!!view.hoverTower || overHero(m)));
     }
   });
-  ui.canvas.addEventListener('pointerleave', () => { view.hover = null; view.mouse = null; });
+  ui.canvas.addEventListener('pointerleave', () => { view.hover = null; view.mouse = null; view.hoverTower = null; });
   ui.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   ui.canvas.addEventListener('pointerdown', (e) => {
-    if (!game || inMenu || paused || game.state !== 'playing') return;
+    if (!playing()) return;
     TD.Audio.unlock();
     if (e.button === 2) { cancel(); return; }
     const m = worldFromEvent(e);
@@ -809,6 +1300,18 @@
         TD.Audio.play('error');
         toast('Pick a spot on the road inside the barracks’ range.', 'bad', 1500);
       }
+    } else if (view.trap) {
+      const type = view.trap;
+      if (!game.canPlaceTrap(c.x, c.y)) {
+        TD.Audio.play('error');
+        toast('Traps go on empty road tiles.', 'bad', 1400);
+      } else if (game.gold < game.trapCost(type)) {
+        TD.Audio.play('error');
+        toast(`Not enough gold — a ${TD.TRAPS[type].name} costs <b class="coin-i">${game.trapCost(type)}</b>`, 'bad', 1800);
+      } else {
+        game.placeTrap(type, c.x, c.y);
+        if (!e.shiftKey || game.gold < game.trapCost(type)) view.trap = null;
+      }
     } else if (view.placing) {
       const type = view.placing;
       if (game.canPlace(c.x, c.y)) {
@@ -825,6 +1328,17 @@
         if (t) { view.placing = null; view.selected = t; TD.Audio.play('click'); }
         else TD.Audio.play('error');
       }
+    } else if (view.hero) {
+      const t = game.towerAt(c.x, c.y);
+      if (t) { clearModes(); view.selected = t; TD.Audio.play('click'); }
+      else if (!overHero(m)) {
+        if (!game.hero.alive) toast(`${TD.HERO.name} is still recovering at the keep.`, 'bad', 1400);
+        else game.moveHero(m.x, m.y);
+      }
+    } else if (overHero(m)) {
+      clearModes();
+      view.hero = true;
+      TD.Audio.play('command');
     } else {
       const t = game.towerAt(c.x, c.y);
       if (t) TD.Audio.play('click');
@@ -839,7 +1353,7 @@
       refreshAll();
       return true;
     }
-    if (view.placing || view.selected) {
+    if (view.placing || view.trap || view.selected || view.hero) {
       clearModes();
       refreshAll();
       return true;
@@ -860,45 +1374,71 @@
     refreshAll();
   }
 
+  function toggleAuto() {
+    TD.settings.autoWave = !TD.settings.autoWave;
+    saveSettings();
+    toast(TD.settings.autoWave ? 'Auto-waves <b>on</b>: each wave is called as soon as the last has spawned.' : 'Auto-waves <b>off</b>.', '', 1800);
+  }
+
   ui.waveBtn.addEventListener('click', callWave);
   ui.pauseBtn.addEventListener('click', () => setPaused(!paused));
-  ui.soundBtn.addEventListener('click', () => {
+  ui.autoBtn.addEventListener('click', () => { TD.Audio.unlock(); toggleAuto(); });
+  ui.heroCard.addEventListener('click', () => { TD.Audio.unlock(); toggleHero(); });
+  ui.settingsBtn.addEventListener('click', () => {
     TD.Audio.unlock();
-    TD.Audio.setMuted(!TD.Audio.muted);
-    store.set('muted', TD.Audio.muted);
-    refreshAll();
+    if (inMenu) { showSettings('menu'); return; }
+    if (!game || game.state !== 'playing') return;
+    const fromPause = paused;
+    paused = true;
+    showSettings(fromPause ? 'pause' : 'game');
   });
   ui.speedBtns.forEach((b) => b.addEventListener('click', () => setSpeed(+b.dataset.speed)));
 
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target.closest && e.target.closest('input')) return;
     TD.Audio.unlock();
     const k = e.key.toLowerCase();
     if (k === ' ') {
       e.preventDefault();
+      if (overlayReturn) return;
       setPaused(!paused);
       return;
     }
     if (k === 'escape') {
+      if (overlayReturn) return;
       if (paused) setPaused(false);
       else if (!cancel()) setPaused(true);
       return;
     }
-    if (inMenu || paused || !game || game.state !== 'playing') return;
+    if (k === 'm') {
+      TD.Audio.setMuted(!TD.Audio.muted);
+      toast(TD.Audio.muted ? 'Sound muted (M)' : 'Sound on', '', 1200);
+      return;
+    }
+    if (!playing()) return;
     const type = TD.TOWER_ORDER.find((t) => TD.TOWERS[t].key === k);
     const ability = TD.ABILITY_ORDER.find((a) => TD.ABILITIES[a].key === k);
+    const trap = TD.TRAP_ORDER.find((t) => TD.TRAPS[t].key === k);
     if (type) togglePlacing(type);
     else if (ability) useAbility(ability);
+    else if (trap) toggleTrap(trap);
+    else if (k === TD.HERO.key) toggleHero();
     else if (k === 'u') doUpgrade();
     else if (k === 'delete' || k === 'backspace') doSell();
     else if (k === 'n') callWave();
-    else if (k === 'f') setSpeed(speed % 3 + 1);
+    else if (k === 'a') toggleAuto();
+    else if (k === 'f') setSpeed(TD.SPEEDS[(TD.SPEEDS.indexOf(speed) + 1) % TD.SPEEDS.length]);
     else if (k === 't' && view.selected && !view.selected.def.kind) {
       const m = TD.TARGET_MODES;
       view.selected.mode = m[(m.indexOf(view.selected.mode) + 1) % m.length];
       refreshAll();
     }
   });
+
+  // Keep the save fresh when the tab is hidden or closed.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saves.put(); });
+  window.addEventListener('pagehide', () => saves.put());
 
   // ---- Main loop ---------------------------------------------------------------------
 
@@ -910,13 +1450,16 @@
       if (running) {
         acc += dt * speed;
         let steps = 0;
-        while (acc >= STEP && steps < 12) {
+        while (acc >= STEP && steps < 24) {
           game.update(STEP);
           acc -= STEP;
           steps++;
         }
-        if (steps >= 12) acc = 0;
+        if (steps >= 24) acc = 0;
+        if (TD.settings.autoWave && game.wave > 0 && game.canCallWave() && !game.sandbox) game.callWave(true);
         processEvents();
+        saveTimer += dt;
+        if (saveTimer > 5) { saveTimer = 0; saves.put(); trophies.flush(); }
       }
       const vdt = paused ? 0 : dt * (inMenu ? 1 : speed);
       vtime += vdt;
@@ -929,7 +1472,7 @@
 
   // ---- Boot --------------------------------------------------------------------------
 
-  TD.Audio.setMuted(store.get('muted', false));
+  TD.Audio.setVolume(TD.settings.volume);
   window.addEventListener('resize', fit);
   fit();
   TD.Render.load((p) => {
@@ -937,10 +1480,12 @@
     if (el) el.textContent = Math.round(p * 100) + '%';
   }).then(() => {
     buildCards();
+    buildAbilityBar();
+    buildTrapBar();
     showMenu();
     fit();
     requestAnimationFrame(frame);
     // Hooks for automated smoke tests.
-    window.__htk = { get game() { return game; }, startGame, view, setSpeed, showArmory, progress };
+    window.__htk = { get game() { return game; }, startGame, view, setSpeed, showArmory, showTrophies, showCodex, showSettings, progress, trophies, saves, continueGame };
   });
 })();
