@@ -534,6 +534,7 @@
             <button class="btn green" data-act="resume">Resume</button>
             <button class="btn" data-act="restart">Restart</button>
             <button class="btn" data-act="pause-settings">Settings</button>
+            <button class="btn" data-act="cheats">Cheats (^)</button>
             <button class="btn" data-act="menu">${game.endless && game.wave > 1 && !game.sandbox ? 'Retreat' : 'Save & quit'}</button>
           </div>
         </div>`;
@@ -670,6 +671,7 @@
     else if (a === 'back') { if (overlayReturn === 'pause') setPaused(true); else showMenu(); }
     else if (a === 'settings') showSettings('menu');
     else if (a === 'pause-settings') showSettings('pause');
+    else if (a === 'cheats') { setPaused(false); toggleCheats(true); }
     else if (a === 'refund') { progress.refund(); showArmory(); }
     else if (a === 'close-settings') {
       resetArmed = false;
@@ -1406,7 +1408,7 @@
       <button data-cheat="gold" data-n="10000">+10k</button>
     </div>
     <form class="cheat-row" data-cheat-form>
-      <input type="number" min="1" step="1" placeholder="Amount" aria-label="Gold amount">
+      <input type="text" inputmode="numeric" autocomplete="off" placeholder="Amount" aria-label="Gold amount">
       <button type="submit">Give gold</button>
     </form>
     <div class="cheat-row">
@@ -1426,7 +1428,8 @@
   function toggleCheats(force) {
     const open = force != null ? force : !cheatPanel.classList.contains('open');
     cheatPanel.classList.toggle('open', open);
-    if (open) cheatPanel.querySelector('input').focus({ preventScroll: true });
+    // Never focus the amount box here: a pending ^ dead key would leak into it.
+    if (!open && cheatPanel.contains(document.activeElement)) document.activeElement.blur();
   }
 
   function giveGold(n) {
@@ -1470,23 +1473,42 @@
     const b = e.target.closest('[data-cheat]');
     if (b) cheat(b.dataset.cheat, +b.dataset.n || 0);
   });
+  const amountBox = cheatPanel.querySelector('input');
+  amountBox.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    cheatPanel.querySelector('[data-cheat-form]').requestSubmit();
+  });
   cheatPanel.querySelector('[data-cheat-form]').addEventListener('submit', (e) => {
     e.preventDefault();
-    const input = cheatPanel.querySelector('input');
-    const n = Math.floor(+input.value);
+    const input = amountBox;
+    // Ignore anything that isn't a digit (e.g. a stray ^ from the dead key, or 10.000).
+    const n = Math.floor(+input.value.replace(/\D/g, ''));
     if (n > 0) cheat('gold', n);
     else TD.Audio.play('error');
     input.select();
   });
 
-  // ^ is a dead key on German layouts, so match its physical key as well as the character.
-  const isCaret = (e) => e.key === '^' || e.key === '°' || (e.key === 'Dead' && (e.code === 'Backquote' || e.code === 'IntlBackslash'));
+  // ^ is a dead key on German layouts and browsers report it differently, so match the
+  // character, any dead key except the accent key, and the physical key left of 1
+  // (Backquote, or IntlBackslash on Mac ISO keyboards).
+  const isCaret = (e) => e.key === '^' || e.key === '°' || (e.key === 'Dead' && e.code !== 'Equal') ||
+    e.code === 'Backquote' || e.code === 'IntlBackslash';
+  let caretHandled = false;
+
+  // Some browsers only report the dead key on release, so keyup toggles when keydown didn't.
+  window.addEventListener('keyup', (e) => {
+    if (!isCaret(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!caretHandled) toggleCheats();
+    caretHandled = false;
+  });
 
   window.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (isCaret(e)) {
       e.preventDefault();
-      toggleCheats();
+      if (!e.repeat) toggleCheats();
+      caretHandled = true;
       return;
     }
     if (e.target.closest && e.target.closest('input')) {
