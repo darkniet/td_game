@@ -93,8 +93,12 @@
       }
     }
 
-    // Flyers ignore the road and head straight from each entrance to the keep.
-    const flights = paths.map((p, i) => makePath([{ x: p.segs[0].ax, y: p.segs[0].ay }, { x: castle.x, y: castle.y + 0.1 }], i));
+    // Flyers ignore the road and head straight from each entrance to the keep, but only from
+    // entrances far enough away to give towers a fair shot at them.
+    let lanes = paths.map((p) => [{ x: p.segs[0].ax, y: p.segs[0].ay }, { x: castle.x, y: castle.y + 0.1 }]);
+    const far = lanes.filter(([a, b]) => Math.hypot(a.x - b.x, a.y - b.y) >= 10);
+    if (far.length) lanes = far;
+    const flights = lanes.map((pts, i) => makePath(pts, i));
 
     const rand = mulberry32(map.seed);
     const props = [];
@@ -195,12 +199,20 @@
       this.endless = this.mode !== 'campaign';
       this.sandbox = this.mode === 'sandbox';
       this.perks = opts.perks || {};
+      this.factionId = TD.FACTIONS[opts.faction] ? opts.faction : 'kingdom';
+      this.faction = TD.FACTIONS[this.factionId];
+      this.heroId = TD.HEROES[opts.hero] ? opts.hero : this.faction.hero;
+      this.heroDef = TD.HEROES[this.heroId];
       const pk = (id) => this.perks[id] || 0;
       this.mods = {
         gold: 40 * pk('chest'), lives: 3 * pk('walls'), cost: 1 - 0.04 * pk('masons'), dmg: 1 + 0.05 * pk('steel'),
         bounty: 1 + 0.08 * pk('bounty'), soldierHp: 1 + 0.15 * pk('drill'),
-        cooldown: 1 - 0.1 * pk('rites'), power: 1 + 0.15 * pk('lore'),
+        cooldown: (1 - 0.1 * pk('rites')) * (this.faction.cooldown || 1), power: (1 + 0.15 * pk('lore')) * (this.faction.power || 1),
+        range: 1 + 0.04 * pk('fletching'), heroXp: 1 + 0.2 * pk('heroism'), heroHp: 1 + 0.1 * pk('heroism'),
+        trapCost: (1 - 0.1 * pk('trapmaster')) * (this.faction.trapCost || 1), trapPower: 1 + 0.15 * pk('trapmaster'),
+        tithe: 1 + 0.1 * pk('tithe'), gate: 0.1 * pk('gate'), heroSpeed: 1 + 0.1 * pk('boots'), respawn: 1 - 0.15 * pk('boots'),
       };
+      this.statCache = new Map();
       this.level = TD.buildLevel(map);
       this.gold = this.sandbox ? Infinity : map.gold + this.mods.gold;
       this.lives = this.sandbox ? Infinity : map.lives + this.mods.lives;
@@ -299,10 +311,18 @@
       this.pending[this.wave] = queue.length;
       for (const t of this.towers) {
         t.recent = 0;
-        const income = this.towerStats(t).income;
-        if (income && !this.sandbox) {
-          this.gold += income;
-          this.emit('income', { x: t.x, y: t.y, gold: income });
+        const st = this.towerStats(t);
+        if (!st.income || this.sandbox) continue;
+        let income = Math.round(st.income * this.mods.tithe);
+        if (st.interest) income += Math.min(st.interestCap, Math.floor(this.gold * st.interest));
+        this.gold += income;
+        this.emit('income', { x: t.x, y: t.y, gold: income });
+        if (st.lifeEvery && (t.fed = (t.fed || 0) + 1) >= st.lifeEvery) {
+          t.fed = 0;
+          if (this.lives < this.maxLives) {
+            this.lives++;
+            this.emit('lifeRestored', { x: t.x, y: t.y });
+          }
         }
       }
       this.emit('wave', { wave: this.wave });
@@ -392,13 +412,24 @@
       if (!e.alive) return 0;
       if (bossMult && (e.def.boss || e.elite)) amount *= bossMult;
       const mult = kind === 'magic' ? 1 - e.mres : kind === 'true' ? 1 : 1 - this.armorOf(e) * (1 - (pen || 0));
-      const dealt = amount * mult;
+      const dealt = amount * mult * (1 + (e.curse || 0));
       this.credit(src, Math.min(dealt, Math.max(0, e.hp)));
       e.hp -= dealt;
       e.flash = 0.09;
       e.hurtAt = this.time;
       if (e.hp <= 0) this.kill(e, src);
       return dealt;
+    }
+
+    // Continuous damage (beams, brambles) that doesn't flash the target every frame.
+    drain(e, amount, kind, src) {
+      if (!e.alive) return;
+      const mult = kind === 'magic' ? 1 - e.mres : 1 - this.armorOf(e);
+      const dealt = amount * mult * (1 + (e.curse || 0));
+      this.credit(src, Math.min(dealt, Math.max(0, e.hp)));
+      e.hp -= dealt;
+      e.hurtAt = this.time;
+      if (e.hp <= 0) this.kill(e, src);
     }
 
     kill(e, src) {
@@ -410,7 +441,7 @@
       this.pending[e.wave]--;
       this.credit(src, 0, 1);
       const h = this.hero;
-      if (h.alive && (src === h || dist2(h, e) < 9)) this.gainXp(e.def.gold * (e.elite ? 2 : 1));
+      if (h.alive && (src === h || dist2(h, e) < 9)) this.gainXp(e.def.gold * (e.elite ? 2 : 1) * this.mods.heroXp);
       this.emit('kill', {
         x: e.x, y: e.y, gold, enemy: e.type, boss: !!e.def.boss, elite: e.elite, fly: !!e.def.fly,
         source: src ? src.statKey : null, cast: src ? src.cast : null, scale: e.scale, flip: e.dirX < -0.1,
@@ -451,11 +482,41 @@
 
     costOf(base) { return this.sandbox ? 0 : Math.round(base * this.mods.cost); }
 
-    towerCost(type) { return this.costOf(TD.TOWERS[type].cost); }
+    // Faction price modifier for a tower type (all towers and type-specific multiply).
+    factionCost(type) {
+      const fm = this.faction.mods || {};
+      return ((fm.all && fm.all.cost) || 1) * ((fm[type] && fm[type].cost) || 1);
+    }
+
+    towerCost(type) { return this.costOf(TD.TOWERS[type].cost * this.factionCost(type)); }
+
+    // Towers this faction can build: the shared roster plus its own faction tower.
+    towerTypes() { return TD.TOWER_ORDER.concat(this.faction.unique); }
 
     branchDef(t) { return t.branch ? t.def.branches[t.branch] : null; }
 
-    towerStats(t) { return t.branch ? t.def.branches[t.branch].levels[t.blevel] : t.def.levels[t.level]; }
+    // Stats of a tower level after faction and perk modifiers (cached, never mutated).
+    levelStats(type, level, branch, blevel) {
+      const key = type + '|' + level + '|' + (branch || '') + '|' + (blevel || 0);
+      let s = this.statCache.get(key);
+      if (!s) {
+        const def = TD.TOWERS[type];
+        s = Object.assign({}, branch ? def.branches[branch].levels[blevel || 0] : def.levels[level]);
+        const fm = this.faction.mods || {};
+        const m = Object.assign({}, fm.all, fm[type]);
+        for (const k of ['dmg', 'dps', 'rate', 'hp']) if (s[k] != null && m[k]) s[k] *= m[k];
+        if (s.range != null) s.range *= (m.range || 1) * this.mods.range;
+        if (s.armor != null && m.armor) s.armor = Math.min(0.85, s.armor + m.armor);
+        if (s.slow != null && m.slow) s.slow = Math.min(0.85, s.slow + m.slow);
+        this.statCache.set(key, s);
+      }
+      return s;
+    }
+
+    towerStats(t) { return this.levelStats(t.type, t.level, t.branch, t.blevel); }
+
+    // Range including an Oracle's blessing.
+    rangeOf(t) { return (this.towerStats(t).range || 0) * (1 + (t.reach || 0)); }
 
     // 0-2 are the base levels, 3-4 the branch ranks.
     tier(t) { return t.branch ? 3 + t.blevel : t.level; }
@@ -467,13 +528,14 @@
     canBranch(t) { return !t.branch && t.level === t.def.levels.length - 1 && !!t.def.branches; }
 
     upgradeCost(t) {
-      if (!t.branch && t.level < t.def.levels.length - 1) return this.costOf(t.def.levels[t.level + 1].cost);
+      const fc = this.factionCost(t.type);
+      if (!t.branch && t.level < t.def.levels.length - 1) return this.costOf(t.def.levels[t.level + 1].cost * fc);
       const b = this.branchDef(t);
-      if (b && t.blevel < b.levels.length - 1) return this.costOf(b.levels[t.blevel + 1].cost);
+      if (b && t.blevel < b.levels.length - 1) return this.costOf(b.levels[t.blevel + 1].cost * fc);
       return null;
     }
 
-    branchCost(t, key) { return this.costOf(t.def.branches[key].levels[0].cost); }
+    branchCost(t, key) { return this.costOf(t.def.branches[key].levels[0].cost * this.factionCost(t.type)); }
 
     // Gold spent since the last wave began is refunded in full while no wave is running,
     // or for a few seconds after spending it; everything else returns 70%.
@@ -505,6 +567,7 @@
     build(type, cx, cy) {
       const def = TD.TOWERS[type];
       if (!def || !this.canPlace(cx, cy) || this.state !== 'playing') return null;
+      if (def.faction && def.faction !== this.factionId) return null;
       const cost = this.towerCost(type);
       if (!this.spend(cost)) return null;
       const t = this.makeTower(type, cx, cy);
@@ -572,14 +635,14 @@
 
     canPlaceTrap(cx, cy) { return this.cellAt(cx, cy) === PATH && !this.trapAt(cx, cy); }
 
-    trapCost(type) { return this.costOf(TD.TRAPS[type].cost); }
+    trapCost(type) { return this.costOf(TD.TRAPS[type].cost * this.mods.trapCost); }
 
     placeTrap(type, cx, cy) {
       const def = TD.TRAPS[type];
       if (!def || !this.canPlaceTrap(cx, cy) || this.state !== 'playing') return null;
       if (!this.spend(this.trapCost(type))) return null;
       // Traps keep up with the horde: stronger the later they are laid.
-      const k = Math.sqrt(this.hpScale(Math.max(1, this.wave)) / this.map.hpMul);
+      const k = Math.sqrt(this.hpScale(Math.max(1, this.wave)) / this.map.hpMul) * this.mods.trapPower;
       const hp = def.hp ? Math.round(def.hp * k * k) : 0;
       const tr = {
         id: this.nextId++, type, def, cx, cy, x: cx + 0.5, y: cy + 0.5, statKey: 'traps',
@@ -628,9 +691,10 @@
     // ---- Soldiers & hero ---------------------------------------------------------
 
     soldierSprite(t) {
-      if (t.branch === 'paladin') return 'blue_king';
-      if (t.branch === 'berserker') return 'blue_peasant';
-      return t.level >= 2 ? 'blue_knight' : 'blue_soldier';
+      const tint = this.faction.tint;
+      if (t.branch === 'paladin') return tint + '_king';
+      if (t.branch === 'berserker') return tint + '_peasant';
+      return tint + (t.level >= 2 ? '_knight' : '_soldier');
     }
 
     // Keeps a barracks' squad in line with its current level (count, stats, rally slots).
@@ -667,13 +731,15 @@
     }
 
     makeHero() {
-      const H = TD.HERO, c = this.level.castle;
+      const H = this.heroDef, c = this.level.castle;
       const h = this.makeSoldier(c.x, c.y + 0.4, null);
       const post = TD.nearestRoad(this.level, c.x, c.y + 1.6, 3);
+      const skillCd = {};
+      for (const id in H.skills) skillCd[id] = H.skills[id].cooldown * 0.3;
       Object.assign(h, {
-        hero: true, level: 1, xp: 0, sprite: H.sprite, scale: 0.78, armor: H.armor, rate: H.rate, regen: H.regen,
-        hx: post ? post.x : c.x, hy: post ? post.y : c.y + 1, ordered: false,
-        skillCd: { whirlwind: 2, rally: 0 }, statKey: 'hero', track: true, dmgDealt: 0, kills: 0,
+        hero: true, level: 1, xp: 0, sprite: H.sprite, scale: H.scale, armor: H.armor, rate: H.rate, regen: H.regen,
+        hx: post ? post.x : c.x, hy: post ? post.y : c.y + 1, ordered: false, shieldUntil: 0,
+        skillCd, statKey: 'hero', track: true, dmgDealt: 0, kills: 0,
       });
       h.src = h;
       this.applyHeroLevel(h);
@@ -683,18 +749,18 @@
     }
 
     applyHeroLevel(h) {
-      const H = TD.HERO;
-      h.maxHp = Math.round((H.hp + H.hpPerLevel * (h.level - 1)) * this.mods.soldierHp);
+      const H = this.heroDef;
+      h.maxHp = Math.round((H.hp + H.hpPerLevel * (h.level - 1)) * this.mods.soldierHp * this.mods.heroHp);
       h.dmg = H.dmg + H.dmgPerLevel * (h.level - 1);
     }
 
-    heroNextXp() { return this.hero.level < TD.HERO.xp.length ? TD.HERO.xp[this.hero.level] : null; }
+    heroNextXp() { return this.hero.level < TD.HERO_XP.length ? TD.HERO_XP[this.hero.level] : null; }
 
     gainXp(n) {
-      const h = this.hero, H = TD.HERO;
-      if (h.level >= H.xp.length) return;
+      const h = this.hero, XP = TD.HERO_XP;
+      if (h.level >= XP.length) return;
       h.xp += n;
-      while (h.level < H.xp.length && h.xp >= H.xp[h.level]) {
+      while (h.level < XP.length && h.xp >= XP[h.level]) {
         h.level++;
         this.applyHeroLevel(h);
         h.hp = Math.min(h.maxHp, h.hp + h.maxHp * 0.3);
@@ -726,6 +792,7 @@
     }
 
     hitSoldier(s, dmg) {
+      if (s.shieldUntil > this.time) dmg *= 1 - this.heroDef.skills.ironskin.reduce;
       s.hp -= dmg * (1 - s.armor);
       s.flash = 0.09;
       if (s.hp > 0) return;
@@ -733,7 +800,7 @@
       s.alive = false;
       this.emit('soldierDown', { x: s.x, y: s.y, hero: !!s.hero });
       if (s.tower) s.respawn = this.towerStats(s.tower).respawn;
-      else if (s.hero) s.respawn = TD.HERO.respawn - 0.5 * (s.level - 1);
+      else if (s.hero) s.respawn = (this.heroDef.respawn - 0.5 * (s.level - 1)) * this.mods.respawn;
       else this.removeSoldier(s);
     }
 
@@ -746,27 +813,91 @@
       this.emit('soldierUp', { x: s.x, y: s.y, hero: !!s.hero });
     }
 
-    heroSkills(h, dt) {
-      const sk = TD.HERO.skills;
-      h.skillCd.whirlwind -= dt;
-      h.skillCd.rally -= dt;
-      if (h.ordered) return;
-      if (h.skillCd.whirlwind <= 0) {
-        const r2 = sk.whirlwind.radius ** 2;
-        const near = this.enemies.filter((e) => e.alive && !e.def.fly && dist2(e, h) < r2);
-        if (near.length >= 2 || (near.length && near[0].def.boss)) {
-          for (const e of near) this.damage(e, h.dmg * sk.whirlwind.mult * this.mods.dmg, 'physical', 0.2, 0, h);
-          h.skillCd.whirlwind = sk.whirlwind.cooldown;
-          this.emit('whirlwind', { x: h.x, y: h.y, radius: sk.whirlwind.radius });
-        }
+    // First foe (closest to the gate) within range of a point, flyers included.
+    heroTarget(h, range) {
+      let best = null, bp = Infinity;
+      for (const e of this.enemies) {
+        if (!e.alive || dist2(e, h) > range * range) continue;
+        const p = this.progress(e);
+        if (p < bp) { bp = p; best = e; }
       }
-      if (h.level >= sk.rally.level && h.skillCd.rally <= 0 && h.hp < h.maxHp * 0.45) {
-        const r2 = sk.rally.radius ** 2;
-        for (const s of this.soldiers) {
-          if (s.alive && dist2(s, h) < r2) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * sk.rally.heal);
+      return best;
+    }
+
+    heroShoot(h, e, dmg) {
+      const r = this.heroDef.ranged;
+      this.projectiles.push({
+        kind: r.projectile, x: h.x, y: h.y - 0.45, target: e, tx: e.x, ty: this.aimY(e),
+        speed: r.projectile === 'arrow' ? 13 : 8, dmg, damage: r.damage, pen: 0, chain: 0, src: h, vx: 0, vy: -1,
+      });
+      h.dirX = e.x >= h.x ? 1 : -1;
+      h.lunge = 0.12;
+      this.emit('fire', { tower: 'hero', kind: r.projectile, x: h.x, y: h.y - 0.45 });
+    }
+
+    // Each hero has two skills; they fire on their own whenever their conditions are met.
+    heroSkills(h, dt) {
+      const H = this.heroDef;
+      for (const id in H.skills) h.skillCd[id] -= dt;
+      if (h.ordered) return;
+      const dmg = h.dmg * this.mods.dmg;
+      const ready = (id) => h.level >= H.skills[id].level && h.skillCd[id] <= 0;
+      const around = (r, air) => this.enemies.filter((e) => e.alive && (air || !e.def.fly) && dist2(e, h) < r * r);
+      const used = (id, data) => {
+        h.skillCd[id] = H.skills[id].cooldown;
+        this.emit('heroSkill', Object.assign({ skill: id, x: h.x, y: h.y }, data));
+      };
+      for (const id in H.skills) {
+        if (!ready(id)) continue;
+        const sk = H.skills[id];
+        if (id === 'whirlwind' || id === 'slam') {
+          const near = around(sk.radius, false);
+          if (near.length >= 2 || (near.length && near[0].def.boss)) {
+            for (const e of near) {
+              this.damage(e, dmg * sk.mult, 'physical', 0.2, 0, h);
+              if (sk.stun) this.stun(e, sk.stun);
+            }
+            used(id, { radius: sk.radius });
+          }
+        } else if (id === 'rally') {
+          if (h.hp < h.maxHp * 0.45) {
+            for (const s of this.soldiers) {
+              if (s.alive && dist2(s, h) < sk.radius * sk.radius) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * sk.heal);
+            }
+            used(id, { radius: sk.radius });
+          }
+        } else if (id === 'ironskin') {
+          if (h.hp < h.maxHp * 0.6 && h.target) {
+            h.shieldUntil = this.time + sk.duration;
+            used(id, {});
+          }
+        } else if (id === 'volley') {
+          const targets = this.enemies.filter((e) => e.alive && dist2(e, h) < H.ranged.range ** 2)
+            .sort((a, b) => this.progress(a) - this.progress(b)).slice(0, sk.arrows);
+          if (targets.length >= 2) {
+            for (const e of targets) this.heroShoot(h, e, dmg * sk.mult);
+            used(id, {});
+          }
+        } else if (id === 'snare') {
+          const target = this.enemies.filter((e) => e.alive && dist2(e, h) < H.ranged.range ** 2).sort((a, b) => b.hp - a.hp)[0];
+          if (target) {
+            this.stun(target, sk.stun);
+            this.damage(target, dmg * sk.mult, 'physical', 0.3, 0, h);
+            used(id, { tx: target.x, ty: target.y });
+          }
+        } else if (id === 'nova') {
+          const near = around(sk.radius, true);
+          if (near.length >= 2 || (near.length && near[0].def.boss)) {
+            for (const e of near) this.damage(e, dmg * sk.mult, 'magic', 0, 0, h);
+            used(id, { radius: sk.radius });
+          }
+        } else if (id === 'storm') {
+          const first = this.heroTarget(h, H.ranged.range);
+          if (first) {
+            this.lightning(h, { chain: sk.chain }, first, { x: h.x, y: h.y - 0.5 }, dmg * sk.mult);
+            used(id, {});
+          }
         }
-        h.skillCd.rally = sk.rally.cooldown;
-        this.emit('rallyCry', { x: h.x, y: h.y, radius: sk.rally.radius });
       }
     }
 
@@ -785,7 +916,8 @@
         }
         if (s.hero) this.heroSkills(s, dt);
         const home = { x: s.hx, y: s.hy };
-        const reach = s.hero ? 1.3 : 1.0, leash = s.hero ? 2.0 : 1.6;
+        const ranged = s.hero && this.heroDef.ranged;
+        const reach = ranged ? 0.6 : s.hero ? 1.3 : 1.0, leash = ranged ? 1.0 : s.hero ? 2.0 : 1.6;
         if (s.target && (!s.target.alive || dist2(s.target, home) > leash * leash)) this.release(s);
         if (!s.target && !s.ordered) {
           let best = null, bd = reach * reach;
@@ -806,14 +938,22 @@
         const dx = gx - s.x, dy = gy - s.y, d = Math.hypot(dx, dy);
         s.moving = d > 0.05;
         if (s.moving) {
-          const step = Math.min(d, (s.hero ? TD.HERO.speed : 2.4) * dt);
+          const step = Math.min(d, (s.hero ? this.heroDef.speed * this.mods.heroSpeed : 2.4) * dt);
           s.x += (dx / d) * step;
           s.y += (dy / d) * step;
           if (Math.abs(dx) > 0.02) s.dirX = Math.sign(dx);
         } else if (s.ordered) {
           s.ordered = false;
         }
-        if (s.target && Math.hypot(s.target.x - s.x, s.target.y - s.y) < 0.5) {
+        if (ranged) {
+          s.cd -= dt;
+          const shot = s.ordered ? null : s.target || this.heroTarget(s, ranged.range);
+          if (shot && s.cd <= 0) {
+            s.cd = 1 / s.rate;
+            this.heroShoot(s, shot, s.dmg * this.mods.dmg);
+          }
+          if (!s.target) s.hp = Math.min(s.maxHp, s.hp + s.regen * dt);
+        } else if (s.target && Math.hypot(s.target.x - s.x, s.target.y - s.y) < 0.5) {
           const e = s.target;
           s.dirX = e.x >= s.x ? 1 : -1;
           s.cd -= dt;
@@ -857,11 +997,13 @@
       } else if (id === 'reinforce') {
         const p = TD.nearestRoad(this.level, x, y, 1.2);
         if (!p) return false;
-        for (let k = 0; k < 2; k++) {
-          const s = this.makeSoldier(p.x + (k ? 0.25 : -0.25), p.y - 0.6, null);
+        const count = this.faction.militia || 2;
+        for (let k = 0; k < count; k++) {
+          const off = (k - (count - 1) / 2) * 0.32;
+          const s = this.makeSoldier(p.x + off, p.y - 0.6, null);
           Object.assign(s, {
-            hx: p.x + (k ? 0.25 : -0.25), hy: p.y, maxHp: Math.round((120 + 16 * w) * this.mods.soldierHp * power),
-            dmg: (8 + 1.2 * w) * power, rate: 1, armor: 0.2, until: 18, sprite: 'blue_woman', scale: 0.64, src: this.abilitySrc,
+            hx: p.x + off, hy: p.y, maxHp: Math.round((120 + 16 * w) * this.mods.soldierHp * power),
+            dmg: (8 + 1.2 * w) * power, rate: 1, armor: 0.2, until: 18, sprite: this.faction.tint + '_woman', scale: 0.64, src: this.abilitySrc,
           });
           s.hp = s.maxHp;
           this.soldiers.push(s);
@@ -937,14 +1079,14 @@
         }
       } else if (kind === 'lightning') {
         this.lightning(t, s, target, o, dmg);
-      } else if (kind === 'stone' || kind === 'firepot' || kind === 'flask') {
+      } else if (kind === 'stone' || kind === 'firepot' || kind === 'flask' || kind === 'cannonball') {
         const dist = Math.hypot(target.x - o.x, target.y - o.y);
-        const T = (kind === 'flask' ? 0.5 : 0.7) + dist * (kind === 'flask' ? 0.07 : 0.09);
+        const T = kind === 'cannonball' ? 0.25 + dist * 0.06 : (kind === 'flask' ? 0.5 : 0.7) + dist * (kind === 'flask' ? 0.07 : 0.09);
         const p = this.predict(target, T);
         this.projectiles.push({
           kind, lob: true, sx: o.x, sy: o.y, tx: p.x, ty: p.y, x: o.x, y: o.y, h: 0, t: 0, T,
           dmg, damage: dmgType, pen, splash: s.splash, burn: s.burn, burnDur: s.burnDur, fireField: s.fireField,
-          stun: s.stun, corrode: s.corrode, big: t.branch === 'trebuchet', src: t,
+          stun: s.stun, corrode: s.corrode, cloud: s.cloud, big: t.branch === 'trebuchet', src: t,
         });
         t.aimX = p.x;
         t.aimY = p.y;
@@ -1013,7 +1155,7 @@
       for (const w in this.pending) {
         if (this.pending[w] <= 0 && !this.spawners.some((s) => s.wave === +w)) {
           delete this.pending[w];
-          const gold = this.sandbox ? 0 : 20 + 5 * Math.min(+w, 30);
+          const gold = this.sandbox ? 0 : Math.round((20 + 5 * Math.min(+w, 30)) * this.mods.tithe);
           this.gold += gold;
           this.emit('waveClear', { wave: +w, gold });
         }
@@ -1081,9 +1223,13 @@
         if (e.dist >= e.path.length) {
           e.alive = false;
           if (e.blockedBy) this.release(e.blockedBy);
+          this.pending[e.wave]--;
+          if (this.mods.gate && this.rand() < this.mods.gate) {
+            this.emit('gateHeld', { x: e.x, y: e.y });
+            continue;
+          }
           this.lives -= e.def.lives;
           this.stats.leaked++;
-          this.pending[e.wave]--;
           this.emit('leak', { lives: e.def.lives, enemy: e.type, x: e.x, y: e.y });
           continue;
         }
@@ -1115,13 +1261,23 @@
       // Chapel blessings: each tower takes the strongest one in range.
       const chapels = this.towers.filter((t) => t.def.kind === 'support');
       for (const t of this.towers) {
-        t.buff = 0; t.haste = 0;
+        t.buff = 0; t.haste = 0; t.reach = 0;
         for (const c of chapels) {
           const cs = this.towerStats(c);
           if (c !== t && (c.x - t.x) ** 2 + (c.y - t.y) ** 2 <= cs.range * cs.range) {
             t.buff = Math.max(t.buff, cs.buff);
             t.haste = Math.max(t.haste, cs.haste || 0);
+            t.reach = Math.max(t.reach, cs.reach || 0);
           }
+        }
+      }
+      // Oracles curse every foe in their range to take extra damage.
+      for (const e of this.enemies) e.curse = 0;
+      for (const c of chapels) {
+        const cs = this.towerStats(c);
+        if (!cs.curse) continue;
+        for (const e of this.enemies) {
+          if ((e.x - c.x) ** 2 + (e.y - c.y) ** 2 <= cs.range * cs.range) e.curse = Math.max(e.curse, cs.curse);
         }
       }
       const horn = this.time < this.hornUntil ? 1.4 : 1;
@@ -1137,12 +1293,57 @@
           continue;
         }
         if (t.def.kind === 'economy' || t.def.kind === 'barracks') continue;
-        if (s.aura) {
-          for (const e of this.targetsInRange(t, s.range)) this.applySlow(e, s.aura, 0.25);
+        const range = this.rangeOf(t);
+        const power = (1 + t.buff) * this.mods.dmg, pace = (1 + t.haste) * horn;
+        if (t.def.kind === 'pulse') {
+          t.pulseT = (t.pulseT || 0) + dt * pace;
+          if (t.pulseT >= s.interval) {
+            const hit = this.targetsInRange(t, range);
+            if (hit.length) {
+              for (const e of hit) {
+                this.damage(e, s.dmg * power, 'physical', 0.3, 0, t);
+                this.stun(e, s.stun);
+              }
+              t.pulseT = 0;
+              t.fireT = 0;
+              this.emit('bell', { x: t.x, y: t.y, radius: range });
+            } else {
+              t.pulseT = s.interval;
+            }
+          }
+          continue;
         }
-        t.cooldown -= dt * (1 + t.haste) * horn;
+        if (t.def.kind === 'aura') {
+          const hit = this.targetsInRange(t, range);
+          t.active = hit.length > 0;
+          for (const e of hit) {
+            this.drain(e, s.dps * power * dt, 'magic', t);
+            this.applySlow(e, s.slow, 0.3);
+          }
+          continue;
+        }
+        if (t.def.kind === 'beam') {
+          const b = t.beam;
+          if (b && (!b.alive || (b.x - t.x) ** 2 + (b.y - t.y) ** 2 > range * range)) t.beam = null;
+          if (!t.beam) {
+            t.beam = this.pickTargets(t, range, 1)[0] || null;
+            t.focus = 0;
+          }
+          if (t.beam) {
+            t.focus += dt;
+            t.aimX = t.beam.x;
+            t.aimY = t.beam.y;
+            const ramp = 1 + (s.ramp - 1) * Math.min(1, t.focus / 3);
+            this.drain(t.beam, s.dps * ramp * power * pace * dt, 'magic', t);
+          }
+          continue;
+        }
+        if (s.aura) {
+          for (const e of this.targetsInRange(t, range)) this.applySlow(e, s.aura, 0.25);
+        }
+        t.cooldown -= dt * pace;
         if (t.type === 'ballista' || t.cooldown <= 0) {
-          const targets = this.pickTargets(t, s.range, s.multishot || 1);
+          const targets = this.pickTargets(t, range, s.multishot || 1);
           const target = targets[0];
           if (target && t.type === 'ballista') {
             const want = Math.atan2(this.aimY(target) + 0.25 - (t.y - 0.35), target.x - t.x);
@@ -1184,7 +1385,8 @@
           const k = Math.min(1, p.t / p.T);
           p.x = p.sx + (p.tx - p.sx) * k;
           p.y = p.sy + (p.ty - p.sy) * k;
-          p.h = Math.sin(Math.PI * k) * (p.kind === 'flask' ? 0.7 + p.T * 0.4 : 1.1 + p.T * 0.6) + (1 - k) * 0.4;
+          p.h = p.kind === 'cannonball' ? Math.sin(Math.PI * k) * 0.35 + (1 - k) * 0.3
+            : Math.sin(Math.PI * k) * (p.kind === 'flask' ? 0.7 + p.T * 0.4 : 1.1 + p.T * 0.6) + (1 - k) * 0.4;
           if (k >= 1) { this.land(p); continue; }
           out.push(p);
         } else if (p.kind === 'bolt') {
@@ -1215,6 +1417,7 @@
         if (p.corrode) this.corrode(e, p.corrode, 4);
       }
       if (p.fireField) this.hazards.push({ x: p.x, y: p.y, r: p.splash * 0.8, dps: p.burn * 0.6, until: this.time + p.fireField, t0: this.time, src: p.src });
+      if (p.cloud) this.hazards.push({ kind: 'poison', x: p.x, y: p.y, r: p.splash * 0.9, dps: p.burn * 0.5, corrode: p.corrode, until: this.time + p.cloud, t0: this.time, src: p.src });
       this.emit('splash', { x: p.x, y: p.y, radius: p.splash, kind: p.kind, big: p.big });
     }
 
@@ -1233,7 +1436,7 @@
       }
       this.emit('hit', { kind: p.kind, x: p.tx, y: p.ty });
       if (p.kind === 'arrow') return;
-      this.applySlow(e, p.slow, p.slowDur);
+      if (p.slow) this.applySlow(e, p.slow, p.slowDur);
       if (p.freeze && this.rand() < p.freeze) this.stun(e, p.freezeDur, true);
       if (p.chain) {
         const hit = [e];
@@ -1248,7 +1451,7 @@
           if (!next) break;
           this.emit('chain', { x1: from.x, y1: this.aimY(from), x2: next.x, y2: this.aimY(next) });
           this.damage(next, p.dmg * 0.6, 'magic', 0, 0, p.src);
-          this.applySlow(next, p.slow, p.slowDur);
+          if (p.slow) this.applySlow(next, p.slow, p.slowDur);
           hit.push(next);
           from = next;
         }
@@ -1269,7 +1472,9 @@
       this.strikes = this.strikes.filter((s) => s.t > 0);
       for (const h of this.hazards) {
         for (const e of this.enemies) {
-          if (e.alive && !e.def.fly && (e.x - h.x) ** 2 + (e.y - h.y) ** 2 <= h.r * h.r) this.burn(e, h.dps, 0.6, h.src);
+          if (!e.alive || e.def.fly || (e.x - h.x) ** 2 + (e.y - h.y) ** 2 > h.r * h.r) continue;
+          this.burn(e, h.dps, 0.6, h.src);
+          if (h.corrode) this.corrode(e, h.corrode, 1);
         }
       }
       this.hazards = this.hazards.filter((h) => h.until > this.time);
@@ -1288,14 +1493,14 @@
       const num = (v) => (v === Infinity ? 'inf' : v);
       const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k]]));
       return {
-        v: 1, map: this.map.id, mode: this.mode, perks: this.perks, seed: this.seed,
+        v: 1, map: this.map.id, mode: this.mode, perks: this.perks, seed: this.seed, faction: this.factionId, hero: this.heroId,
         rand: this.rand.state(), waveRand: this.waveRand.state(), waveCache: this.waveCache,
         gold: num(this.gold), lives: num(this.lives), maxLives: num(this.maxLives),
         ...pick(this, ['wave', 'time', 'countdown', 'nextId', 'spawnCount', 'hornUntil', 'castCount', 'stats', 'damageBy', 'pending', 'spawners', 'cheated']),
         abilities: Object.fromEntries(Object.entries(this.abilities).map(([k, v]) => [k, v.cd])),
         seen: [...this.seen],
         towers: this.towers.map((t) => ({
-          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown']),
+          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown', 'pulseT', 'fed']),
           rally: t.rally && { x: t.rally.x, y: t.rally.y },
         })),
         traps: this.traps.map((tr) => ({ ...pick(tr, ['id', 'type', 'cx', 'cy', 'uses', 'dmg', 'hp', 'maxHp']), until: num(tr.until) })),
@@ -1306,10 +1511,10 @@
         })),
         soldiers: this.soldiers.map((s) => ({
           ...pick(s, ['id', 'hero', 'x', 'y', 'hx', 'hy', 'hp', 'maxHp', 'dmg', 'rate', 'armor', 'regen', 'cleave', 'alive', 'respawn', 'sprite', 'scale',
-            'level', 'xp', 'skillCd', 'ordered', 'dmgDealt', 'kills']),
+            'level', 'xp', 'skillCd', 'ordered', 'dmgDealt', 'kills', 'shieldUntil']),
           tower: s.tower ? s.tower.id : null, until: num(s.until), militia: !s.tower && !s.hero,
         })),
-        hazards: this.hazards.map((h) => pick(h, ['x', 'y', 'r', 'dps', 'until', 't0'])),
+        hazards: this.hazards.map((h) => pick(h, ['kind', 'x', 'y', 'r', 'dps', 'corrode', 'until', 't0'])),
       };
     }
 
@@ -1317,7 +1522,7 @@
       const map = TD.MAPS.find((m) => m.id === data.map);
       if (!map || data.v !== 1) return null;
       const den = (v) => (v === 'inf' ? Infinity : v);
-      const g = new Game(map, { mode: data.mode, perks: data.perks, seed: data.seed });
+      const g = new Game(map, { mode: data.mode, perks: data.perks, seed: data.seed, faction: data.faction, hero: data.hero });
       Object.assign(g, {
         waveCache: data.waveCache || {}, gold: den(data.gold), lives: den(data.lives), maxLives: den(data.maxLives),
         wave: data.wave, time: data.time, countdown: data.countdown, nextId: data.nextId, spawnCount: data.spawnCount,

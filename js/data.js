@@ -143,15 +143,47 @@ TD.TOWERS = {
       { cost: 90, dmg: 15, rate: 0.85, range: 2.9, splash: 0.85, burn: 20, burnDur: 3 },
       { cost: 140, dmg: 22, rate: 0.9, range: 3.1, splash: 0.95, burn: 30, burnDur: 3.5, corrode: 0.25 },
     ],
+    branches: {
+      plague: {
+        name: 'Plague Doctor', blurb: 'Toxic flasks leave clouds that poison and corrode everything inside.',
+        levels: [
+          { cost: 170, dmg: 26, rate: 0.9, range: 3.2, splash: 1.0, burn: 34, burnDur: 4, corrode: 0.3, cloud: 3 },
+          { cost: 230, dmg: 36, rate: 0.95, range: 3.4, splash: 1.1, burn: 50, burnDur: 4, corrode: 0.4, cloud: 4.5 },
+        ],
+      },
+      pyro: {
+        name: 'Pyromancer', blurb: 'Roaring fireballs whose flames burn far hotter and longer.', projectile: 'firepot',
+        levels: [
+          { cost: 180, dmg: 40, rate: 0.8, range: 3.2, splash: 1.2, burn: 60, burnDur: 4 },
+          { cost: 240, dmg: 55, rate: 0.85, range: 3.4, splash: 1.3, burn: 95, burnDur: 4.5, fireField: 3 },
+        ],
+      },
+    },
   },
   chapel: {
     name: 'Chapel', key: '7', cost: 120, kind: 'support',
-    blurb: 'Blesses nearby towers with extra damage. A cathedral also hastens them and heals soldiers.',
+    blurb: 'Blesses nearby towers with extra damage. At level 3 it also hastens them and heals soldiers.',
     levels: [
       { range: 2.3, buff: 0.15 },
       { cost: 100, range: 2.6, buff: 0.25 },
       { cost: 150, range: 2.9, buff: 0.3, haste: 0.15, heal: 15 },
     ],
+    branches: {
+      cathedral: {
+        name: 'Cathedral', blurb: 'Grand blessings: more damage, faster towers and steady healing.',
+        levels: [
+          { cost: 180, range: 3.2, buff: 0.38, haste: 0.2, heal: 25 },
+          { cost: 240, range: 3.5, buff: 0.45, haste: 0.25, heal: 40 },
+        ],
+      },
+      oracle: {
+        name: 'Oracle\u2019s Sanctum', blurb: 'Seers extend the reach of nearby towers and curse foes to take more damage.',
+        levels: [
+          { cost: 170, range: 3.0, buff: 0.3, reach: 0.12, curse: 0.12 },
+          { cost: 230, range: 3.3, buff: 0.35, reach: 0.18, curse: 0.2 },
+        ],
+      },
+    },
   },
   windmill: {
     name: 'Windmill', key: '8', cost: 140, kind: 'economy',
@@ -160,6 +192,60 @@ TD.TOWERS = {
       { income: 20 },
       { cost: 110, income: 35 },
       { cost: 170, income: 55 },
+    ],
+    branches: {
+      bank: {
+        name: 'Royal Bank', blurb: 'Pays more each wave, plus interest on the gold in your purse.',
+        levels: [
+          { cost: 200, income: 60, interest: 0.03, interestCap: 60 },
+          { cost: 260, income: 80, interest: 0.05, interestCap: 120 },
+        ],
+      },
+      granary: {
+        name: 'Granary', blurb: 'Feeds the garrison: pays out and restores a life every few waves.',
+        levels: [
+          { cost: 180, income: 50, lifeEvery: 3 },
+          { cost: 240, income: 70, lifeEvery: 2 },
+        ],
+      },
+    },
+  },
+
+  // ---- Faction towers (one per faction, built with key 9) ----
+  belltower: {
+    name: 'Bell Tower', key: '9', cost: 130, faction: 'kingdom', kind: 'pulse', damage: 'physical', ground: true,
+    blurb: 'Its great bell tolls at intervals, stunning and bruising every ground foe nearby.',
+    levels: [
+      { range: 2.2, interval: 7, stun: 0.8, dmg: 12 },
+      { cost: 110, range: 2.4, interval: 6.5, stun: 1.0, dmg: 24 },
+      { cost: 160, range: 2.7, interval: 6, stun: 1.3, dmg: 40 },
+    ],
+  },
+  grove: {
+    name: 'Thorn Grove', key: '9', cost: 120, faction: 'sylvan', kind: 'aura', damage: 'magic', ground: true,
+    blurb: 'Living brambles lash every ground foe in reach, wounding and slowing them nonstop.',
+    levels: [
+      { range: 1.8, dps: 12, slow: 0.2 },
+      { cost: 100, range: 2.0, dps: 22, slow: 0.25 },
+      { cost: 150, range: 2.2, dps: 38, slow: 0.3 },
+    ],
+  },
+  cannon: {
+    name: 'Cannon Tower', key: '9', cost: 140, faction: 'ironhold', damage: 'physical', projectile: 'cannonball', armorPen: 0.5, ground: true,
+    blurb: 'Dwarven cannons fire fast, heavy shot that bursts through armor and crowds alike.',
+    levels: [
+      { dmg: 40, rate: 0.7, range: 3.0, splash: 0.85 },
+      { cost: 120, dmg: 66, rate: 0.75, range: 3.2, splash: 0.95 },
+      { cost: 180, dmg: 105, rate: 0.8, range: 3.5, splash: 1.05 },
+    ],
+  },
+  obelisk: {
+    name: 'Mana Obelisk', key: '9', cost: 130, faction: 'conclave', kind: 'beam', damage: 'magic',
+    blurb: 'A crystal beam that burns hotter the longer it stays on one foe (up to triple). Hits flyers.',
+    levels: [
+      { dps: 20, range: 2.8, ramp: 3 },
+      { cost: 110, dps: 34, range: 3.0, ramp: 3 },
+      { cost: 170, dps: 55, range: 3.2, ramp: 3 },
     ],
   },
 };
@@ -362,17 +448,83 @@ TD.TRAPS = {
 };
 TD.TRAP_ORDER = ['spikes', 'tar', 'keg', 'barricade'];
 
-// The hero fights on his own, grows stronger as foes fall near him and respawns at the keep.
-TD.HERO = {
-  name: 'Sir Aldric', sprite: 'hero', key: 'h',
-  hp: 380, hpPerLevel: 55, dmg: 20, dmgPerLevel: 5, rate: 1.25, armor: 0.3, speed: 2.3, regen: 10, respawn: 15,
-  // Total experience needed to leave each level (index = current level).
-  xp: [0, 40, 100, 180, 290, 430, 600, 820, 1100, 1450],
-  skills: {
-    whirlwind: { name: 'Whirlwind', level: 1, cooldown: 8, radius: 1.1, mult: 1.6, blurb: 'Spins to strike every foe around him.' },
-    rally: { name: 'Rallying Cry', level: 3, cooldown: 18, radius: 2.0, heal: 0.35, blurb: 'When badly hurt, heals himself and nearby soldiers.' },
+// Playable factions: tower stat tweaks (multipliers; armor and slow add), a colour scheme and
+// a unique tower each.
+TD.FACTIONS = {
+  kingdom: {
+    name: 'Kingdom of Aldmere', short: 'Kingdom', tint: 'blue', color: '#4f8fe0', hero: 'aldric', unique: 'belltower', icon: 'crown',
+    blurb: 'Steadfast knights and holy orders. Balanced, with tougher soldiers.',
+    perks: ['Soldiers have +20% health', 'Call to Arms summons 3 militia', 'Faction tower: Bell Tower'],
+    mods: { barracks: { hp: 1.2 } }, militia: 3,
+  },
+  sylvan: {
+    name: 'Sylvan Wardens', short: 'Sylvan', tint: 'teal', color: '#2fbfb0', hero: 'lyra', unique: 'grove', icon: 'leaf',
+    blurb: 'Elven archers and druids of the deep woods.',
+    perks: ['Archer towers +15% range and +10% damage', 'Wizard slows 10% stronger', 'Catapults cost 15% more', 'Faction tower: Thorn Grove'],
+    mods: { archer: { range: 1.15, dmg: 1.1 }, wizard: { slow: 0.1 }, catapult: { cost: 1.15 } },
+  },
+  ironhold: {
+    name: 'Ironhold Clans', short: 'Ironhold', tint: 'gold', color: '#e0b030', hero: 'borin', unique: 'cannon', icon: 'hammer',
+    blurb: 'Dwarven engineers from under the mountain.',
+    perks: ['Catapults +25%, ballistae +20% damage', 'Soldiers +30% health, +10% armor', 'Traps cost 25% less', 'Archers 10% slower, all towers 8% pricier', 'Faction tower: Cannon Tower'],
+    mods: { all: { cost: 1.08 }, catapult: { dmg: 1.25 }, ballista: { dmg: 1.2 }, barracks: { hp: 1.3, armor: 0.1 }, archer: { rate: 0.9 } },
+    trapCost: 0.75,
+  },
+  conclave: {
+    name: 'Arcane Conclave', short: 'Conclave', tint: 'violet', color: '#9b59d0', hero: 'vael', unique: 'obelisk', icon: 'star',
+    blurb: 'Battle mages of the violet tower.',
+    perks: ['Wizard towers +25% damage, +7% range', 'Alchemists +20% damage', 'Abilities recharge 20% faster, hit 20% harder', 'Archers and catapults deal 10% less', 'Faction tower: Mana Obelisk'],
+    mods: { wizard: { dmg: 1.25, range: 1.07 }, alchemist: { dmg: 1.2 }, archer: { dmg: 0.9 }, catapult: { dmg: 0.9 } },
+    cooldown: 0.8, power: 1.2,
   },
 };
+TD.FACTION_ORDER = ['kingdom', 'sylvan', 'ironhold', 'conclave'];
+
+// Heroes fight on their own, grow stronger as foes fall near them and respawn at the keep.
+// Total experience needed to leave each level (index = current level).
+TD.HERO_XP = [0, 40, 100, 180, 290, 430, 600, 820, 1100, 1450];
+TD.HERO_KEY = 'h';
+TD.HEROES = {
+  aldric: {
+    name: 'Sir Aldric', title: 'Knight Commander', sprite: 'hero', scale: 0.78,
+    blurb: 'A stalwart knight who holds the line and shrugs off blows.',
+    hp: 380, hpPerLevel: 55, dmg: 20, dmgPerLevel: 5, rate: 1.25, armor: 0.3, speed: 2.3, regen: 10, respawn: 15,
+    skills: {
+      whirlwind: { name: 'Whirlwind', level: 1, cooldown: 8, radius: 1.1, mult: 1.6, blurb: 'Spins to strike every foe around him.' },
+      rally: { name: 'Rallying Cry', level: 3, cooldown: 18, radius: 2.0, heal: 0.35, blurb: 'When badly hurt, heals himself and nearby soldiers.' },
+    },
+  },
+  lyra: {
+    name: 'Lyra Swiftbow', title: 'Elven Ranger', sprite: 'hero_lyra', scale: 0.74,
+    blurb: 'A deadly archer who shoots from afar and pins foes in place. Fragile up close.',
+    hp: 230, hpPerLevel: 32, dmg: 15, dmgPerLevel: 4, rate: 1.6, armor: 0.1, speed: 2.8, regen: 8, respawn: 12,
+    ranged: { range: 2.9, projectile: 'arrow', damage: 'physical' },
+    skills: {
+      volley: { name: 'Volley', level: 1, cooldown: 7, arrows: 5, mult: 1.0, blurb: 'Looses an arrow at up to five foes at once.' },
+      snare: { name: 'Entangling Shot', level: 3, cooldown: 12, stun: 2.2, mult: 2.0, blurb: 'Pins the toughest foe in range to the ground.' },
+    },
+  },
+  borin: {
+    name: 'Thane Borin', title: 'Dwarven Warlord', sprite: 'hero_borin', scale: 0.7,
+    blurb: 'A stubborn dwarf in heavy plate. Slow, but nearly impossible to bring down.',
+    hp: 540, hpPerLevel: 78, dmg: 17, dmgPerLevel: 4, rate: 1.0, armor: 0.45, speed: 1.9, regen: 14, respawn: 18,
+    skills: {
+      slam: { name: 'Ground Slam', level: 1, cooldown: 10, radius: 1.3, mult: 1.3, stun: 1.0, blurb: 'Smashes the ground, damaging and stunning foes around him.' },
+      ironskin: { name: 'Iron Skin', level: 3, cooldown: 20, duration: 6, reduce: 0.6, blurb: 'When hurt, hardens his skin to block 60% of damage.' },
+    },
+  },
+  vael: {
+    name: 'Archmage Vael', title: 'Conclave Archmage', sprite: 'hero_vael', scale: 0.74,
+    blurb: 'A master of arcane fire whose bolts ignore armor. Keep him behind the line.',
+    hp: 250, hpPerLevel: 34, dmg: 22, dmgPerLevel: 6, rate: 0.85, armor: 0.05, speed: 2.2, regen: 8, respawn: 14,
+    ranged: { range: 2.6, projectile: 'orb', damage: 'magic' },
+    skills: {
+      nova: { name: 'Arcane Nova', level: 1, cooldown: 9, radius: 1.6, mult: 2.0, blurb: 'Blasts every foe around him with raw magic.' },
+      storm: { name: 'Chain Lightning', level: 3, cooldown: 11, chain: 5, mult: 1.6, blurb: 'Lightning arcs between up to six foes.' },
+    },
+  },
+};
+TD.HERO_ORDER = ['aldric', 'lyra', 'borin', 'vael'];
 
 TD.SPEEDS = [1, 2, 3, 5];
 
@@ -395,12 +547,16 @@ TD.ACHIEVEMENTS = [
   { id: 'skyguard', name: 'Skyguard', blurb: 'Bring down 100 flying foes in total.', glory: 10 },
   { id: 'trapper', name: 'Trapper', blurb: 'Defeat 100 foes with traps in total.', glory: 10 },
   { id: 'meteor10', name: 'Extinction Event', blurb: 'Defeat 10 foes with a single Meteor Strike.', glory: 15 },
-  { id: 'hero10', name: 'Hero of the Realm', blurb: 'Raise Sir Aldric to level 10.', glory: 15 },
-  { id: 'specialist', name: 'Specialist', blurb: 'Build all ten tower specializations.', glory: 20 },
+  { id: 'hero10', name: 'Hero of the Realm', blurb: 'Raise any hero to level 10.', glory: 15 },
+  { id: 'specialist', name: 'Specialist', blurb: 'Build all sixteen tower specializations.', glory: 25 },
   { id: 'rank5', name: 'Masterwork', blurb: 'Raise any tower to rank five.', glory: 5 },
   { id: 'builder', name: 'Master Builder', blurb: 'Have 20 towers standing at once.', glory: 10 },
   { id: 'hoarder', name: 'Treasury Overflowing', blurb: 'Hold 2,000 gold at once.', glory: 10 },
   { id: 'early_bird', name: 'Eager for Battle', blurb: 'Call 10 waves early in a single game.', glory: 10 },
+  { id: 'all_factions', name: 'Grand Alliance', blurb: 'Win a campaign map with every faction.', glory: 30 },
+  { id: 'all_heroes', name: 'Hall of Heroes', blurb: 'Win a campaign map with every hero.', glory: 30 },
+  { id: 'unique_max', name: 'Signature Strength', blurb: 'Raise a faction tower to level 3.', glory: 10 },
+  { id: 'blackwood_win', name: 'Out of the Woods', blurb: 'Win Blackwood.', glory: 20 },
   { id: 'armory', name: 'Fully Armed', blurb: 'Master every Royal Armory perk.', glory: 0 },
 ];
 
@@ -414,6 +570,12 @@ TD.PERKS = [
   { id: 'drill', name: 'Drill Sergeants', blurb: '+15% soldier health per rank.' },
   { id: 'rites', name: 'Swift Rites', blurb: 'Abilities recharge 10% faster per rank.' },
   { id: 'lore', name: 'Arcane Lore', blurb: '+15% ability power per rank.' },
+  { id: 'fletching', name: 'Fletching', blurb: '+4% tower range per rank.' },
+  { id: 'heroism', name: 'Hero Training', blurb: 'Heroes earn 20% more experience and have 10% more health per rank.' },
+  { id: 'trapmaster', name: 'Trapmaster', blurb: 'Traps cost 10% less and hit 15% harder per rank.' },
+  { id: 'tithe', name: 'Royal Tithe', blurb: '+10% windmill income and wave-clear gold per rank.' },
+  { id: 'gate', name: 'Fortified Gate', blurb: '10% chance per rank that a foe reaching the keep costs no lives.' },
+  { id: 'boots', name: 'Swift Boots', blurb: 'Heroes move 10% faster and return 15% sooner per rank.' },
 ];
 TD.PERK_COSTS = [10, 20, 35];
 
@@ -471,5 +633,25 @@ TD.MAPS = [
     paths: [[[-1, 6], [5, 6], [5, 2], [11, 2], [11, 9], [17, 9], [17, 5]]],
     decor: ['pine', 'pine', 'pine', 'pine_small', 'rock_m', 'rock_pair', 'rock_cluster', 'rock_s', 'stump'],
     props: [['house', 19, 1], ['mill', 15, 4], ['church', 19, 7], ['house_b', 14, 11]],
+  },
+  {
+    id: 'kingsbridge', name: 'Kingsbridge', difficulty: 'Knight',
+    blurb: 'Grey stone streets snaking through the old city. The longest road in the realm.',
+    ground: 'stone', hpMul: 1.3, gold: 260, lives: 15, seed: 77, density: 0.24,
+    paths: [[[-1, 2], [3, 2], [3, 9], [7, 9], [7, 4], [11, 4], [11, 10], [15, 10], [15, 7], [18, 7], [18, 3]]],
+    decor: ['rock_m', 'rock_s', 'rock_pair', 'tree_slim', 'tree_tall', 'bush', 'log', 'stump'],
+    props: [['house', 15, 1], ['market', 13, 7], ['church', 9, 1], ['statue', 5, 6], ['house_b', 19, 9], ['stall', 1, 6]],
+  },
+  {
+    id: 'blackwood', name: 'Blackwood', difficulty: 'Warlord',
+    blurb: 'Three roads cut through a dark forest and meet beneath the keep.',
+    ground: 'grass', hpMul: 1.0, gold: 340, lives: 15, seed: 91, density: 0.45, weather: 'leaves',
+    paths: [
+      [[-1, 1], [5, 1], [5, 5], [10, 5], [10, 8], [14, 8], [14, 4]],
+      [[-1, 10], [6, 10], [6, 8], [10, 8], [14, 8], [14, 4]],
+      [[20, 1], [17, 1], [17, 6], [19, 6], [19, 10], [16, 10], [16, 8], [14, 8], [14, 4]],
+    ],
+    decor: ['pine', 'pine', 'tree_tall', 'pine_small', 'tree_slim', 'bush', 'stump', 'log', 'rock_m'],
+    props: [['house_b', 1, 4], ['mill', 8, 2], ['church', 2, 7], ['house', 18, 3], ['statue', 12, 6]],
   },
 ];

@@ -16,22 +16,27 @@ python3 -m http.server 8000   # then open http://localhost:8000
   - **Campaign**: 20 waves per map, earn up to 3 stars.
   - **Endless**: procedurally generated waves that never stop, with elite foes from wave 12 and a boss every 10 waves. Your best wave is saved per map.
   - **Sandbox**: endless waves with unlimited gold and lives.
-- **5 maps**: Greenvale Road, Twin Fords, Dunewatch, Ashen Hollow and Frostmarch Pass. Two of them have two entrances.
-- **8 towers**: Archer, Catapult, Wizard, Ballista, Barracks (soldiers block the road), Alchemist (burn + armor corrosion), Chapel (buffs nearby towers) and Windmill (gold each wave).
-- **Specializations**: at level 3, five towers pick one of two branches, each with 2 more ranks: Ranger Lodge / Marksman Spire, Bombard / Trebuchet, Frost Spire / Storm Tower, Scorpion Nest / Dragonslayer, Paladin Order / Berserker Hall.
-- **Hero**: Sir Aldric, a knight you send anywhere on the map. He blocks foes, levels up to 10 and learns Whirlwind and Rallying Cry.
+- **7 maps**: Greenvale Road, Twin Fords, Dunewatch, Ashen Hollow, Frostmarch Pass, Kingsbridge and Blackwood (three entrances).
+- **4 playable factions**, each with its own colours, stat bonuses and drawbacks, and a unique faction tower:
+  - **Kingdom of Aldmere**: tougher soldiers, extra militia; *Bell Tower* stuns everything around it.
+  - **Sylvan Wardens**: long-range archers, stronger slows; *Thorn Grove* lashes and slows all nearby foes.
+  - **Ironhold Clans**: heavy siege and armor, cheap traps, pricier towers; *Cannon Tower* blasts through armor.
+  - **Arcane Conclave**: stronger magic and abilities; *Mana Obelisk* fires a beam that heats up on one target.
+- **8 shared towers**: Archer, Catapult, Wizard, Ballista, Barracks (soldiers block the road), Alchemist (burn + armor corrosion), Chapel (buffs nearby towers) and Windmill (gold each wave).
+- **16 specializations**: at level 3, eight towers pick one of two branches, each with 2 more ranks: Ranger Lodge / Marksman Spire, Bombard / Trebuchet, Frost Spire / Storm Tower, Scorpion Nest / Dragonslayer, Paladin Order / Berserker Hall, Plague Doctor / Pyromancer, Cathedral / Oracle's Sanctum, Royal Bank / Granary.
+- **4 heroes** you send anywhere on the map, each levelling up to 10 with two skills: Sir Aldric (knight), Lyra Swiftbow (ranged archer), Thane Borin (dwarf tank) and Archmage Vael (ranged mage).
 - **4 abilities**: Meteor Strike, Call to Arms, Winter's Grasp, War Horn.
 - **4 road traps**: Spike Trap, Tar Pit, Powder Keg and Barricade.
 - **16 enemy types**, including healers, summoners, flyers (bats, wyverns) that cross the map along dashed flight lanes, and four bosses (Warlord, Witch Queen, Iron King, Red Dragon).
-- **Royal Armory**: permanent perks bought with Glory, which you earn in every game.
-- **25 trophies** that pay out Glory, and a **Codex** of every foe, tower and trap you've met.
+- **Royal Armory**: 14 permanent perks bought with Glory, which you earn in every game.
+- **29 trophies** that pay out Glory, and a **Codex** of every foe, tower and trap you've met.
 - **Quality of life**: auto-save with Continue, a full refund when you sell before the next wave, per-tower damage stats and an end-of-battle report, auto-waves, 1×–5× speed, and settings for volume, shake, particles and more.
 
 ### Controls
 
 | Key | Action |
 | --- | --- |
-| `1`–`8` | Pick a tower to build |
+| `1`–`9` | Pick a tower to build (`9` is your faction's tower) |
 | `Z` `X` `C` `V` | Lay a trap on the road |
 | `Q` `W` `E` `R` | Abilities |
 | `H` | Select the hero (then click the map to move him) |

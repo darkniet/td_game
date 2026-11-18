@@ -6,6 +6,12 @@
   const W = TD.COLS * T, H = TD.ROWS * T;
   const EXTRA_SPRITES = ['keep_blue', 'dome_arcane', 'dome_frost', 'dome_storm', 'hall_blue', 'house_b_blue',
     'church_gold', 'hut_top_gold', 'roof_green', 'roof_blue'].map((n) => 'structures/' + n).concat(['units/hero']);
+  const TINTS = ['teal', 'gold', 'violet'];
+  for (const tint of TINTS) {
+    for (const st of ['keep', 'hall', 'house_b']) EXTRA_SPRITES.push(`structures/${st}_${tint}`);
+    for (const u of ['soldier', 'knight', 'king', 'peasant', 'woman', 'mage']) EXTRA_SPRITES.push(`units/${tint}_${u}`);
+  }
+  EXTRA_SPRITES.push('units/hero_lyra', 'units/hero_borin', 'units/hero_vael');
   const ROAD_TILES = {
     5: 'road_ns', 10: 'road_ew', 3: 'road_ne', 9: 'road_nw', 6: 'road_es', 12: 'road_ws',
     14: 'road_wes', 11: 'road_wen', 13: 'road_nsw', 7: 'road_nse', 15: 'road_x',
@@ -23,6 +29,12 @@
   const opt = () => TD.settings || DEFAULT_SETTINGS;
   const PARTICLES = { low: 0.35, normal: 1, high: 1.6 };
   const tierOf = (t) => (t.branch ? 3 + (t.blevel || 0) : t.level);
+  // The player's faction colours: banner colour and sprite tint ('blue', 'teal', 'gold', 'violet').
+  const FT = { tint: 'blue', color: '#4f8fe0' };
+  function setFaction(f) {
+    FT.tint = f.tint;
+    FT.color = f.color;
+  }
   const statsOf = (t) => (t.branch ? t.def.branches[t.branch].levels[t.blevel || 0] : t.def.levels[t.level]);
 
   function load(onProgress) {
@@ -110,6 +122,7 @@
     sand: { tuft: '#c9b386', pebble: '#bfa77a' },
     snow: { tuft: '#c8e4f0', pebble: '#9fb2bd' },
     dirt: { tuft: '#9c6634', pebble: '#7e5530' },
+    stone: { tuft: '#7fa36a', pebble: '#8a9494' },
   };
 
   function drawClutter(ctx, ground, x, y, v) {
@@ -211,7 +224,7 @@
     // A royal-blue standard flying over the keep.
     const fx = x + 2, fy = y - h * 2 + 6;
     pole(ctx, fx, fy, 26);
-    drawFlag(ctx, fx, fy - 26, 18, 11, C.blue, time);
+    drawFlag(ctx, fx, fy - 26, 18, 11, FT.color, time);
   }
 
   function pole(ctx, x, y, h) {
@@ -259,10 +272,10 @@
   function drawArcher(ctx, t, x, y, time) {
     const s = 0.55, tier = tierOf(t);
     shadow(ctx, x, y - 1, 25, 7);
-    const h = sprite(ctx, 'structures/keep_blue', x, y, s);
+    const h = sprite(ctx, 'structures/keep_' + FT.tint, x, y, s);
     if (tier === 0) {
       // A lone archer keeping watch on the battlements.
-      sprite(ctx, 'units/blue_soldier', x, y - h + 10, 0.42);
+      sprite(ctx, `units/${FT.tint}_soldier`, x, y - h + 10, 0.42);
       return;
     }
     const roof = t.branch === 'ranger' ? 'roof_green' : t.branch === 'marksman' ? 'roof_blue' : 'roof_red';
@@ -272,13 +285,13 @@
       const tipY = y - h - rh + 3;
       const big = tier >= 4;
       pole(ctx, x, tipY, big ? 24 : 18);
-      const color = t.branch === 'ranger' ? C.green : t.branch === 'marksman' ? C.gold : C.blue;
+      const color = t.branch === 'ranger' ? C.green : t.branch === 'marksman' ? C.gold : FT.color;
       drawFlag(ctx, x, tipY - (big ? 24 : 18), big ? 19 : 15, big ? 11 : 9, color, time + t.id);
     }
     if (t.branch === 'ranger') {
       // Extra archers posted on the walls.
-      sprite(ctx, 'units/blue_soldier', x - 15, y - h + 12, 0.34);
-      if (tier >= 4) sprite(ctx, 'units/blue_soldier', x + 15, y - h + 12, 0.34, true);
+      sprite(ctx, `units/${FT.tint}_soldier`, x - 15, y - h + 12, 0.34);
+      if (tier >= 4) sprite(ctx, `units/${FT.tint}_soldier`, x + 15, y - h + 12, 0.34, true);
     }
   }
 
@@ -455,8 +468,8 @@
 
   function drawBarracks(ctx, t, x, y, time) {
     shadow(ctx, x, y - 1, 28, 8);
-    const h = sprite(ctx, 'structures/hall_blue', x, y, 0.47);
-    const color = t.branch === 'paladin' ? C.gold : t.branch === 'berserker' ? C.red : C.blue;
+    const h = sprite(ctx, 'structures/hall_' + FT.tint, x, y, 0.47);
+    const color = t.branch === 'paladin' ? C.gold : t.branch === 'berserker' ? C.red : FT.color;
     pole(ctx, x + 18, y - h + 6, 20);
     drawFlag(ctx, x + 18, y - h - 14, 15, 9, color, time + t.id);
     if (tierOf(t) >= 2) {
@@ -470,20 +483,27 @@
     const h = sprite(ctx, 'structures/house_tower', x, y, 0.5);
     const tier = tierOf(t);
     const chimX = x + 16, chimY = y - h + 4;
-    const colors = ['#8fe08a', '#b4e86a', '#c38bff'];
-    for (let i = 0; i < 3; i++) {
+    const smoke = t.branch === 'plague' ? ['#6f9a3c', '#8a5aa8'] : t.branch === 'pyro' ? ['#ff8a3d', '#5a4a44'] : [['#8fe08a', '#b4e86a', '#c38bff'][Math.min(2, tier)]];
+    for (let i = 0; i < 3 + (t.branch ? 1 : 0); i++) {
       const p = (time * 0.55 + i / 3 + t.id * 0.13) % 1;
       ctx.globalAlpha = (1 - p) * 0.75;
-      ctx.fillStyle = colors[Math.min(2, tier)];
+      ctx.fillStyle = smoke[i % smoke.length];
       ctx.beginPath();
-      ctx.arc(chimX + Math.sin(p * 6 + i) * 3, chimY - p * 26, 3 + p * 5, 0, Math.PI * 2);
+      ctx.arc(chimX + Math.sin(p * 6 + i) * 3, chimY - p * 26, (t.branch === 'plague' ? 4 : 3) + p * 5, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    if (t.branch === 'pyro') {
+      // Flames licking out of the chimney.
+      const fl = 0.18 + Math.sin(time * 16 + t.id) * 0.03;
+      sprite(ctx, 'env/fire', chimX, chimY + 4, fl);
+    }
     // A glowing flask on the doorstep.
+    const glowCol = t.branch === 'pyro' ? '255,140,60' : t.branch === 'plague' ? '170,120,230' : '150,255,120';
     const fl = 0.5 + Math.sin(time * 4 + t.id) * 0.3;
-    glow(ctx, x - 14, y - 6, 9, `rgba(150,255,120,${fl})`, 'rgba(150,255,120,0)');
-    ctx.fillStyle = '#5bd36a'; ctx.strokeStyle = '#2f7a3a'; ctx.lineWidth = 1.2;
+    glow(ctx, x - 14, y - 6, 9, `rgba(${glowCol},${fl})`, `rgba(${glowCol},0)`);
+    ctx.fillStyle = t.branch === 'pyro' ? '#ff8a3d' : t.branch === 'plague' ? '#9a6ad0' : '#5bd36a';
+    ctx.strokeStyle = '#2f3a2a'; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.arc(x - 14, y - 6, 3.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.fillRect(x - 15, y - 13, 2, 4);
   }
@@ -491,27 +511,63 @@
   function drawChapel(ctx, t, x, y, time) {
     const tier = tierOf(t);
     const pulse = 0.5 + Math.sin(time * 2 + t.id) * 0.25;
-    glow(ctx, x, y - 50, 30 + tier * 4, `rgba(255,225,130,${0.35 * pulse + 0.1})`, 'rgba(255,225,130,0)');
+    const oracle = t.branch === 'oracle', cathedral = t.branch === 'cathedral';
+    const col = oracle ? '190,140,255' : '255,225,130';
+    glow(ctx, x, y - 50, 30 + tier * 4, `rgba(${col},${0.35 * pulse + 0.1})`, `rgba(${col},0)`);
     shadow(ctx, x, y - 1, 24, 7);
-    const h = drawStack(ctx, x, y, 0.5, 'church_gold', 'hut_top_gold');
+    const sc = cathedral ? 0.5 + 0.04 * (t.blevel + 1) : 0.5;
+    const h = drawStack(ctx, x, y, sc, 'church_gold', 'hut_top_gold');
     if (tier >= 2) {
-      // Golden rays from the steeple.
-      ctx.strokeStyle = `rgba(255,236,160,${0.55 * pulse})`;
+      // Rays from the steeple.
+      ctx.strokeStyle = `rgba(${oracle ? '220,190,255' : '255,236,160'},${0.55 * pulse})`;
       ctx.lineWidth = 2;
-      for (let i = 0; i < 6; i++) {
-        const a = -Math.PI / 2 + (i - 2.5) * 0.35;
+      const n = cathedral ? 9 : 6;
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (i - (n - 1) / 2) * 0.3;
         ctx.beginPath();
         ctx.moveTo(x + Math.cos(a) * 8, y - h + 8 + Math.sin(a) * 8);
-        ctx.lineTo(x + Math.cos(a) * 20, y - h + 8 + Math.sin(a) * 20);
+        ctx.lineTo(x + Math.cos(a) * 22, y - h + 8 + Math.sin(a) * 22);
         ctx.stroke();
       }
+    }
+    if (cathedral) {
+      for (const side of [-1, 1]) {
+        pole(ctx, x + side * 20, y - 10, 30);
+        drawFlag(ctx, x + side * 20, y - 40, 11, 7, C.gold, time + t.id + side);
+      }
+    }
+    if (oracle) {
+      // The all-seeing eye hovering over the sanctum.
+      const ey = y - h - 14 + Math.sin(time * 2 + t.id) * 2;
+      glow(ctx, x, ey, 14, 'rgba(220,190,255,0.8)', 'rgba(160,100,255,0)');
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#6a2c86'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(x, ey, 8, 4.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#8a3fb0';
+      ctx.beginPath(); ctx.arc(x + Math.sin(time * 1.3) * 2, ey, 2.6, 0, Math.PI * 2); ctx.fill();
     }
   }
 
   function drawWindmill(ctx, t, x, y, time) {
     const tier = tierOf(t);
     shadow(ctx, x, y - 1, 24, 7);
-    if (tier >= 1) {
+    if (t.branch === 'bank') {
+      // Stacks of coins by the door.
+      for (let i = 0; i < 3 + t.blevel; i++) {
+        const sx = x - 22 + i * 7, n = 2 + ((i + 1) % 3);
+        for (let k = 0; k < n; k++) {
+          ctx.fillStyle = '#ffcf4a'; ctx.strokeStyle = '#a86f17'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.ellipse(sx, y - 3 - k * 2.6, 3.6, 1.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+      }
+    } else if (t.branch === 'granary') {
+      // Hay bales stacked high.
+      for (let i = 0; i < 2 + t.blevel; i++) {
+        const sx = x - 21 + (i % 2) * 11, sy = y - 3 - Math.floor(i / 2) * 7;
+        ctx.fillStyle = '#e9c45a'; ctx.strokeStyle = '#a8862a'; ctx.lineWidth = 1.2;
+        roundRect(ctx, sx - 5, sy - 6, 10, 7, 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx - 2, sy - 6); ctx.lineTo(sx - 2, sy + 1); ctx.moveTo(sx + 2, sy - 6); ctx.lineTo(sx + 2, sy + 1); ctx.stroke();
+      }
+    } else if (tier >= 1) {
       // Grain sacks piling up by the door.
       for (let i = 0; i < tier + 1; i++) {
         const sx = x - 22 + i * 7, sy = y - 3 - (i % 2) * 2;
@@ -519,13 +575,140 @@
         roundRect(ctx, sx - 4, sy - 8, 8, 9, 3); ctx.fill(); ctx.stroke();
       }
     }
-    const h = sprite(ctx, 'structures/house_b_blue', x, y, 0.5);
-    drawBlades(ctx, x, y - h + 10, 0.5 + tier * 0.03, time * (0.9 + tier * 0.45) + t.id);
+    const h = sprite(ctx, 'structures/house_b_' + FT.tint, x, y, 0.5);
+    drawBlades(ctx, x, y - h + 10, 0.5 + Math.min(tier, 3) * 0.03, time * (0.9 + tier * 0.45) + t.id);
+    if (t.branch) {
+      pole(ctx, x + 19, y - h + 8, 18);
+      drawFlag(ctx, x + 19, y - h - 10, 12, 8, t.branch === 'bank' ? C.gold : '#e9c45a', time + t.id);
+    }
+  }
+
+  // ---- Faction towers ----------------------------------------------------------------
+
+  function drawBellTower(ctx, t, x, y, time) {
+    const tier = tierOf(t);
+    shadow(ctx, x, y - 1, 25, 7);
+    const h = sprite(ctx, 'structures/keep_' + FT.tint, x, y, 0.55);
+    const top = y - h + 5;
+    const ring = Math.max(0, 1 - t.fireT / 1.4);
+    const swing = Math.sin(t.fireT * 11) * 0.55 * ring;
+    ctx.fillStyle = C.woodMid; ctx.strokeStyle = C.woodDark; ctx.lineWidth = 1.5;
+    for (const side of [-1, 1]) { ctx.fillRect(x + side * 15 - 2, top - 26, 4, 26); ctx.strokeRect(x + side * 15 - 2, top - 26, 4, 26); }
+    ctx.fillStyle = tier >= 2 ? C.gold : C.red; ctx.strokeStyle = tier >= 2 ? C.goldDark : '#8a2f20'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 22, top - 24); ctx.lineTo(x, top - 42); ctx.lineTo(x + 22, top - 24); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.save();
+    ctx.translate(x, top - 24);
+    ctx.rotate(swing);
+    ctx.fillStyle = '#e8b83a'; ctx.strokeStyle = '#9a6d14'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(-9, 15); ctx.quadraticCurveTo(-9, 1, 0, 0); ctx.quadraticCurveTo(9, 1, 9, 15); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#7a5410';
+    ctx.beginPath(); ctx.arc(Math.sin(swing * 3) * 3, 16, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    if (tier >= 1) {
+      pole(ctx, x, top - 42, 10 + tier * 3);
+      drawFlag(ctx, x, top - 52 - tier * 3, 12, 7, FT.color, time + t.id);
+    }
+  }
+
+  function drawGrove(ctx, t, x, y, time) {
+    const tier = tierOf(t);
+    const pulse = 0.5 + Math.sin(time * 3 + t.id) * 0.3;
+    glow(ctx, x, y - 6, 34, `rgba(80,230,170,${(t.active ? 0.45 : 0.2) * pulse + 0.1})`, 'rgba(80,230,170,0)');
+    shadow(ctx, x, y - 1, 26, 8);
+    // Thorny roots creeping out from the trees.
+    ctx.strokeStyle = '#5a3a1a'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + t.id, r = 18 + Math.sin(time * 2 + i) * 2;
+      ctx.beginPath(); ctx.moveTo(x, y - 3);
+      ctx.quadraticCurveTo(x + Math.cos(a) * r * 0.5 + 4, y - 3 + Math.sin(a) * 5, x + Math.cos(a) * r, y - 2 + Math.sin(a) * 7);
+      ctx.stroke();
+    }
+    sprite(ctx, 'env/tree_tall', x - 13, y - 1, 0.45);
+    if (tier >= 1) sprite(ctx, 'env/tree_slim', x + 14, y, 0.55);
+    sprite(ctx, 'env/pine', x, y + 2, 0.55 + tier * 0.05);
+    if (tier >= 2) sprite(ctx, 'env/berry_bush', x + 10, y + 5, 0.45);
+    for (let i = 0; i < 4 + tier * 2; i++) {
+      const p = (time * 0.4 + i * 0.29 + t.id * 0.1) % 1;
+      ctx.globalAlpha = (1 - p) * 0.9;
+      ctx.fillStyle = i % 2 ? '#9cffd6' : '#d6ff9c';
+      ctx.beginPath(); ctx.arc(x + Math.sin(i * 2.3 + p * 4) * 16, y - 8 - p * 46, 1.8, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCannon(ctx, t, x, y, time) {
+    const tier = tierOf(t);
+    shadow(ctx, x, y - 1, 26, 8);
+    const by = y - 6, rx = 22, ry = 11, hgt = 10 + tier * 2;
+    ctx.fillStyle = '#8f8a80'; ctx.strokeStyle = '#55524c'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x, by, rx, ry, 0, 0, Math.PI);
+    ctx.lineTo(x - rx, by - hgt);
+    ctx.ellipse(x, by - hgt, rx, ry, 0, Math.PI, 0, true);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = tier >= 2 ? '#d9c38a' : '#b8b2a6';
+    ctx.beginPath(); ctx.ellipse(x, by - hgt, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (tier >= 1) {
+      ctx.strokeStyle = C.goldDark; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(x, by - hgt, rx - 5, ry - 3, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    const ang = Math.atan2(t.aimY - t.y, t.aimX - t.x);
+    const recoil = t.fireT < 0.15 ? (1 - t.fireT / 0.15) * 5 : 0;
+    ctx.save();
+    ctx.translate(x, by - hgt - 4);
+    ctx.scale(1, 0.85);
+    ctx.rotate(ang);
+    ctx.fillStyle = C.woodMid; ctx.strokeStyle = C.woodDark; ctx.lineWidth = 2;
+    roundRect(ctx, -10, -8, 18, 16, 3); ctx.fill(); ctx.stroke();
+    ctx.translate(-recoil, 0);
+    const len = 24 + tier * 3, w = 9 + tier;
+    ctx.fillStyle = '#3a3d42'; ctx.strokeStyle = '#1d1f22';
+    roundRect(ctx, -8, -w / 2, len, w, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = tier >= 2 ? C.gold : '#5a5e66';
+    ctx.fillRect(len - 12, -w / 2 - 1.5, 4, w + 3);
+    ctx.fillRect(-2, -w / 2 - 1, 3, w + 2);
+    if (t.fireT < 0.09) glow(ctx, len - 6, 0, 16, 'rgba(255,230,140,1)', 'rgba(255,120,30,0)');
+    ctx.restore();
+    if (tier >= 1) {
+      pole(ctx, x - 18, by - hgt + 2, 20);
+      drawFlag(ctx, x - 18, by - hgt - 18, 12, 7, FT.color, time + t.id);
+    }
+  }
+
+  function drawObelisk(ctx, t, x, y, time) {
+    const tier = tierOf(t);
+    const pulse = 0.5 + Math.sin(time * 3 + t.id) * 0.3;
+    shadow(ctx, x, y - 1, 20, 6);
+    ctx.fillStyle = '#9da8a8'; ctx.strokeStyle = C.outline; ctx.lineWidth = 2;
+    roundRect(ctx, x - 16, y - 12, 32, 12, 3); ctx.fill(); ctx.stroke();
+    roundRect(ctx, x - 11, y - 18, 22, 7, 2); ctx.fill(); ctx.stroke();
+    const top = y - 64 - tier * 6;
+    glow(ctx, x, top + 18, 26 + tier * 4, `rgba(190,140,255,${0.3 + pulse * 0.3})`, 'rgba(150,80,255,0)');
+    const g = ctx.createLinearGradient(x - 10, 0, x + 10, 0);
+    g.addColorStop(0, '#d9b8ff'); g.addColorStop(0.5, '#9b59d0'); g.addColorStop(1, '#5e2a8a');
+    ctx.fillStyle = g; ctx.strokeStyle = '#3d1a5e'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, top); ctx.lineTo(x + 9, top + 14); ctx.lineTo(x + 8, y - 18); ctx.lineTo(x - 8, y - 18); ctx.lineTo(x - 9, top + 14);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(x - 3, top + 8); ctx.lineTo(x - 4, y - 22); ctx.stroke();
+    if (tier >= 1) {
+      for (let i = 0; i < tier * 2; i++) {
+        const a = time * 1.4 + (i / (tier * 2)) * Math.PI * 2;
+        ctx.fillStyle = `rgba(230,200,255,${0.8})`;
+        ctx.save();
+        ctx.translate(x + Math.cos(a) * 16, top + 26 + Math.sin(a) * 6);
+        ctx.rotate(a);
+        ctx.fillRect(-2, -2, 4, 4);
+        ctx.restore();
+      }
+    }
   }
 
   const DRAWERS = {
     archer: drawArcher, wizard: drawWizard, catapult: drawCatapult, ballista: drawBallista,
     barracks: drawBarracks, alchemist: drawAlchemist, chapel: drawChapel, windmill: drawWindmill,
+    belltower: drawBellTower, grove: drawGrove, cannon: drawCannon, obelisk: drawObelisk,
   };
 
   function drawTower(ctx, t, x, y, time) {
@@ -541,13 +724,14 @@
     c.width = c.height = size * dpr;
     const ctx = c.getContext('2d');
     const box = type === 'archer' ? (tier === 0 ? 76 : tier === 1 ? 104 : 122)
-      : type === 'chapel' ? 100 : type === 'windmill' ? 92 : branch === 'trebuchet' ? 92 : type === 'wizard' ? 86 : 76;
+      : type === 'chapel' ? 100 : type === 'windmill' ? 92 : branch === 'trebuchet' ? 92 : type === 'wizard' ? 86
+        : type === 'belltower' ? 110 : type === 'obelisk' ? 96 : type === 'grove' ? 86 : 76;
     const k = (size / box) * dpr;
     ctx.scale(k, k);
     const def = TD.TOWERS[type];
     const fake = {
       type, def, level: Math.min(tier, def.levels.length - 1), branch: branch || null, blevel: Math.max(0, tier - 3),
-      id: 0, x: 0.5, y: 0.5, aimX: 1, aimY: 0.5, fireT: 9, angle: -0.5,
+      id: 0, x: 0.5, y: 0.5, aimX: 1, aimY: 0.5, fireT: 9, angle: -0.5, active: true,
     };
     drawTower(ctx, fake, box / 2, box === 76 ? 70 : box - 6, 0);
     return c;
@@ -849,6 +1033,7 @@
 
     setGame(game) {
       this.game = game;
+      setFaction(game.faction);
       this.bg = buildBackground(game.level, game.map.ground, 2);
       this.fx.clear();
       this.castleFlash = 0;
@@ -859,6 +1044,8 @@
       this.weather = [];
       if (game.map.ground === 'snow') {
         for (let i = 0; i < 90; i++) this.weather.push({ kind: 'snow', x: Math.random() * W, y: Math.random() * H, s: 1 + Math.random() * 2, v: 18 + Math.random() * 30, p: Math.random() * 6 });
+      } else if (game.map.weather === 'leaves') {
+        for (let i = 0; i < 45; i++) this.weather.push({ kind: 'leaf', x: Math.random() * W, y: Math.random() * H, s: 2.2 + Math.random() * 1.6, v: 14 + Math.random() * 16, p: Math.random() * 6, c: Math.random() < 0.5 ? '#d9822b' : Math.random() < 0.5 ? '#b5452f' : '#8fae3a' });
       } else if (game.map.ground === 'dirt') {
         for (let i = 0; i < 40; i++) this.weather.push({ kind: 'ash', x: Math.random() * W, y: Math.random() * H, s: 0.8 + Math.random() * 1.6, v: 8 + Math.random() * 14, p: Math.random() * 6 });
       }
@@ -888,6 +1075,11 @@
             fx.ring(px, py, ev.radius * T * 1.3, 'rgba(160,255,130,0.9)', 0.4);
             fx.puff(px, py, 12, 'rgba(140,230,110,0.9)', 80, 4);
             fx.puff(px, py, 6, 'rgba(255,170,70,0.9)', 60, 3);
+          } else if (ev.kind === 'cannonball') {
+            fx.ring(px, py, ev.radius * T * 1.3, 'rgba(255,230,190,0.9)', 0.35);
+            fx.puff(px, py, 12, 'rgba(120,110,100,0.85)', 100, 5);
+            fx.puff(px, py, 6, 'rgba(255,170,80,0.9)', 80, 3);
+            fx.shake = Math.max(fx.shake, 0.3);
           } else if (ev.kind === 'firepot') {
             fx.ring(px, py, ev.radius * T * 1.4, 'rgba(255,190,90,0.95)', 0.45);
             fx.puff(px, py, 18, 'rgba(255,140,40,0.9)', 110, 5, -60);
@@ -972,24 +1164,20 @@
           fx.puff(px, py - 8, 18, 'rgba(176,122,66,0.95)', 110, 4, 200);
           fx.puff(px, py - 8, 8, 'rgba(225,205,170,0.9)', 70, 5);
           break;
-        case 'whirlwind':
-          fx.ring(px, py, ev.radius * T * 1.6, 'rgba(255,230,150,0.95)', 0.4);
-          fx.ring(px, py, ev.radius * T * 1.1, 'rgba(255,255,255,0.9)', 0.3);
-          for (let i = 0; i < 3; i++) {
-            const a0 = Math.random() * Math.PI * 2;
-            const pts = [];
-            for (let k = 0; k <= 6; k++) {
-              const a = a0 + k * 0.32;
-              pts.push([px + Math.cos(a) * ev.radius * T * 0.8, py - 14 + Math.sin(a) * ev.radius * T * 0.45]);
-            }
-            fx.bolt(pts, 'rgba(255,245,210,0.95)', 0.22);
-          }
+        case 'heroSkill':
+          this.heroSkillFx(ev, px, py);
           break;
-        case 'rallyCry':
-          fx.ring(px, py, ev.radius * T * 1.5, 'rgba(130,255,160,0.9)', 0.6);
-          for (let i = 0; i < 10; i++) {
-            fx.add({ kind: 'text', x: px + (Math.random() - 0.5) * 70, y: py - 20 - Math.random() * 20, vx: 0, vy: -35, life: 0, max: 0.8, str: '+', color: '#7dff9a', drag: 1 });
-          }
+        case 'bell':
+          fx.ring(px, py, ev.radius * T * 1.6, 'rgba(255,215,110,0.95)', 0.6);
+          fx.ring(px, py, ev.radius * T * 1.1, 'rgba(255,245,200,0.85)', 0.45);
+          fx.shake = Math.max(fx.shake, 0.3);
+          break;
+        case 'lifeRestored':
+          fx.text(castle.x * T, castle.y * T - 80, '+1 life', '#7dff9a', true);
+          fx.puff(px, py - 20, 8, 'rgba(130,255,160,0.9)', 50, 3);
+          break;
+        case 'gateHeld':
+          fx.text(castle.x * T, castle.y * T - 70, 'Held!', '#9fd0ff', true);
           break;
         case 'heroLevel':
           fx.text(px, py - 60, 'Level ' + ev.level + '!', '#ffd166', true);
@@ -1011,6 +1199,7 @@
           break;
         case 'fire':
           if (ev.tower === 'catapult') fx.puff(px, py + 18, 4, 'rgba(225,205,170,0.8)', 40, 3);
+          if (ev.kind === 'cannonball') fx.puff(px, py - 4, 10, 'rgba(200,200,200,0.85)', 50, 5, -20);
           break;
         case 'soldierDown':
           fx.puff(px, py - 10, ev.hero ? 20 : ev.expired ? 10 : 7, 'rgba(225,225,235,0.9)', ev.hero ? 80 : 50, ev.hero ? 6 : 4);
@@ -1046,6 +1235,54 @@
       }
     }
 
+    heroSkillFx(ev, px, py) {
+      const fx = this.fx;
+      const r = (ev.radius || 1) * T;
+      switch (ev.skill) {
+        case 'whirlwind':
+          fx.ring(px, py, r * 1.6, 'rgba(255,230,150,0.95)', 0.4);
+          fx.ring(px, py, r * 1.1, 'rgba(255,255,255,0.9)', 0.3);
+          for (let i = 0; i < 3; i++) {
+            const a0 = Math.random() * Math.PI * 2;
+            const pts = [];
+            for (let k = 0; k <= 6; k++) pts.push([px + Math.cos(a0 + k * 0.32) * r * 0.8, py - 14 + Math.sin(a0 + k * 0.32) * r * 0.45]);
+            fx.bolt(pts, 'rgba(255,245,210,0.95)', 0.22);
+          }
+          break;
+        case 'rally':
+          fx.ring(px, py, r * 1.5, 'rgba(130,255,160,0.9)', 0.6);
+          for (let i = 0; i < 10; i++) {
+            fx.add({ kind: 'text', x: px + (Math.random() - 0.5) * 70, y: py - 20 - Math.random() * 20, vx: 0, vy: -35, life: 0, max: 0.8, str: '+', color: '#7dff9a', drag: 1 });
+          }
+          break;
+        case 'slam':
+          fx.ring(px, py, r * 1.7, 'rgba(200,160,110,0.95)', 0.5);
+          fx.puff(px, py, 18, 'rgba(170,130,90,0.9)', 120, 5);
+          fx.puff(px, py, 8, 'rgba(120,120,125,0.95)', 140, 3, 220);
+          fx.shake = Math.max(fx.shake, 0.6);
+          break;
+        case 'ironskin':
+          fx.ring(px, py - 10, 40, 'rgba(220,230,240,0.95)', 0.5);
+          fx.text(px, py - 50, 'Iron Skin!', '#d9e4ee');
+          break;
+        case 'volley':
+          fx.puff(px, py - 30, 6, 'rgba(200,255,200,0.9)', 50, 2.5);
+          break;
+        case 'snare': {
+          const tx = ev.tx * T, ty = ev.ty * T;
+          fx.ring(tx, ty, 34, 'rgba(110,200,90,0.95)', 0.6);
+          fx.puff(tx, ty, 10, 'rgba(90,160,60,0.9)', 50, 3);
+          fx.text(tx, ty - 40, 'Snared!', '#9be07d');
+          break;
+        }
+        case 'nova':
+          fx.ring(px, py, r * 1.8, 'rgba(200,150,255,0.95)', 0.5);
+          fx.ring(px, py, r * 1.2, 'rgba(255,255,255,0.9)', 0.35);
+          fx.puff(px, py - 20, 22, 'rgba(180,140,255,0.9)', 140, 4);
+          break;
+      }
+    }
+
     draw(game, view, dt, time) {
       const ctx = this.ctx;
       this.now = time;
@@ -1067,13 +1304,13 @@
       const sel = view.selected;
       if (sel) {
         const s = game.towerStats(sel);
-        if (s.range) this.drawRange(ctx, sel.x * T, sel.y * T, s.range, 'rgba(255,255,255,0.13)', 'rgba(255,255,255,0.7)');
+        if (s.range) this.drawRange(ctx, sel.x * T, sel.y * T, game.rangeOf(sel), 'rgba(255,255,255,0.13)', 'rgba(255,255,255,0.7)');
         if (sel.rally) this.drawRallyFlag(ctx, sel.rally.x * T, sel.rally.y * T, time);
       }
       const hov = view.hoverTower;
       if (hov && hov !== sel && opt().hoverRange && !view.placing && !view.trap) {
         const s = game.towerStats(hov);
-        if (s.range) this.drawRange(ctx, hov.x * T, hov.y * T, s.range, 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0.35)');
+        if (s.range) this.drawRange(ctx, hov.x * T, hov.y * T, game.rangeOf(hov), 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0.35)');
       }
       this.drawHeroMarks(ctx, game, view, time);
 
@@ -1139,6 +1376,7 @@
         if (tr.type === 'barricade' && tr.hp < tr.maxHp) this.drawHealth(ctx, tr.x * T, tr.y * T - 30, tr.hp, tr.maxHp, 34, 4, false, '#c9a46a');
       }
       for (const p of game.projectiles) this.drawProjectile(ctx, p, dt);
+      for (const t of game.towers) if (t.beam && t.beam.alive) this.drawBeam(ctx, game, t, time);
       this.drawStrikes(ctx, game, time);
       this.fx.draw(ctx);
       this.drawTargeting(ctx, game, view, time);
@@ -1161,6 +1399,15 @@
         const x = h.x * T, y = h.y * T, r = h.r * T;
         const fade = Math.min(1, (h.until - game.time) / 0.6);
         ctx.globalAlpha = fade;
+        if (h.kind === 'poison') {
+          // Swirling toxic cloud.
+          for (let i = 0; i < 6; i++) {
+            const a = time * 0.8 + i * 1.05, rr = r * (0.25 + (i % 3) * 0.2);
+            glow(ctx, x + Math.cos(a) * rr, y - 4 + Math.sin(a) * rr * 0.5, r * 0.55, `rgba(${i % 2 ? '120,190,70' : '150,100,200'},0.32)`, 'rgba(120,190,70,0)');
+          }
+          ctx.globalAlpha = 1;
+          continue;
+        }
         glow(ctx, x, y, r * 1.1, 'rgba(255,120,40,0.45)', 'rgba(255,80,20,0)');
         for (let i = 0; i < 7; i++) {
           const a = i * 2.4, rr = (i / 7) * r * 0.8;
@@ -1335,10 +1582,31 @@
       }
     }
 
+    drawBeam(ctx, game, t, time) {
+      const e = t.beam, s = game.towerStats(t);
+      const sx = t.x * T, sy = (t.cy + 0.86) * T - 64 - game.tier(t) * 6;
+      const ex = e.x * T, ey = game.aimY(e) * T;
+      const heat = Math.min(1, (t.focus || 0) / 3);
+      const w = 2 + heat * 5 + Math.sin(time * 30) * 0.8;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(170,110,255,${0.35 + heat * 0.3})`;
+      ctx.lineWidth = w * 2.4;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = `rgba(${200 + heat * 55 | 0},${160 + heat * 60 | 0},255,0.95)`;
+      ctx.lineWidth = w;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = Math.max(1, w * 0.35);
+      ctx.stroke();
+      glow(ctx, ex, ey, 10 + heat * 10, 'rgba(255,240,255,0.95)', 'rgba(170,110,255,0)');
+      if (Math.random() < 0.5) this.fx.add({ kind: 'dot', x: ex, y: ey, vx: (Math.random() - 0.5) * 60, vy: -30 - Math.random() * 30, life: 0, max: 0.35, size: 2, color: 'rgba(220,190,255,0.9)', drag: 2 });
+      void s;
+    }
+
     drawRallyFlag(ctx, x, y, time) {
       shadow(ctx, x, y, 6, 2.5, 0.3);
       pole(ctx, x, y, 22);
-      drawFlag(ctx, x, y - 22, 12, 8, C.blue, time);
+      drawFlag(ctx, x, y - 22, 12, 8, FT.color, time);
     }
 
     drawTargeting(ctx, game, view, time) {
@@ -1420,7 +1688,7 @@
       const good = ok && game.gold >= game.towerCost(view.placing);
       ctx.fillStyle = good ? 'rgba(120,255,140,0.25)' : 'rgba(255,80,60,0.3)';
       ctx.fillRect(x * T, y * T, T, T);
-      const range = def.levels[0].range;
+      const range = game.levelStats(view.placing, 0).range;
       if (range) {
         this.drawRange(ctx, (x + 0.5) * T, (y + 0.5) * T, range,
           good ? 'rgba(255,255,255,0.1)' : 'rgba(255,80,60,0.08)', good ? 'rgba(255,255,255,0.7)' : 'rgba(255,120,100,0.7)');
@@ -1437,6 +1705,27 @@
       }
     }
 
+    drawHeroGear(ctx, s, x, y, time) {
+      const dir = s.dirX < 0 ? -1 : 1;
+      if (s.sprite === 'hero_lyra') {
+        const bx = x + dir * 11, by = y - 22, pull = s.lunge > 0 ? 4 : 0;
+        ctx.strokeStyle = '#6b3f1d'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(bx - dir * 6, by, 12, -0.95, 0.95, dir < 0); ctx.stroke();
+        ctx.strokeStyle = '#f3e3c3'; ctx.lineWidth = 1;
+        const ex = bx - dir * 6 + Math.cos(0.95) * 12 * dir;
+        ctx.beginPath(); ctx.moveTo(ex, by - Math.sin(0.95) * 12); ctx.lineTo(ex - dir * pull, by); ctx.lineTo(ex, by + Math.sin(0.95) * 12); ctx.stroke();
+      } else if (s.sprite === 'hero_vael') {
+        const p = 0.6 + Math.sin(time * 5) * 0.3;
+        glow(ctx, x + dir * 8, y - 40 * s.scale - 4, 9, `rgba(230,180,255,${p})`, 'rgba(160,80,255,0)');
+      }
+      if (s.shieldUntil > this.game.time) {
+        const p = 0.5 + Math.sin(time * 10) * 0.25;
+        ctx.strokeStyle = `rgba(220,230,240,${p})`; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.ellipse(x, y - 18, 16, 22, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = `rgba(200,215,230,${p * 0.25})`; ctx.fill();
+      }
+    }
+
     drawSoldier(ctx, s, time) {
       const x = s.x * T, y = s.y * T;
       const bob = s.moving ? Math.abs(Math.sin(time * 11 + s.phase)) * 2.4 : 0;
@@ -1445,6 +1734,7 @@
       ctx.globalAlpha = s.tower ? 1 : Math.min(1, s.until / 1.5);
       shadow(ctx, x, y, 10 * s.scale, 3.6 * s.scale, 0.25);
       sprite(ctx, name, x + lunge, y - bob, s.scale, s.dirX < 0);
+      if (s.hero) this.drawHeroGear(ctx, s, x + lunge, y - bob, time);
       if (s.flash > 0) {
         ctx.globalAlpha *= Math.min(1, s.flash / 0.09) * 0.7;
         sprite(ctx, null, x + lunge, y - bob, s.scale, s.dirX < 0, tinted(name, '#ffffff'));
@@ -1561,6 +1851,11 @@
           ctx.beginPath(); ctx.arc(0, 2, 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
           ctx.fillStyle = '#d9c7a0'; ctx.fillRect(-1.5, -5, 3, 4);
           ctx.restore();
+        } else if (p.kind === 'cannonball') {
+          ctx.fillStyle = '#2b2d31'; ctx.strokeStyle = '#111';  ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(x, sy, 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.beginPath(); ctx.arc(x - 1.8, sy - 1.8, 1.6, 0, Math.PI * 2); ctx.fill();
         } else if (p.kind === 'firepot') {
           glow(ctx, x, sy, 14, 'rgba(255,220,120,0.9)', 'rgba(255,90,30,0)');
           ctx.fillStyle = '#7a3b22'; ctx.strokeStyle = '#4d2414'; ctx.lineWidth = 1.5;
@@ -1602,6 +1897,11 @@
         f.y += f.v * dt;
         f.x += Math.sin(time + f.p) * 12 * dt;
         if (f.y > H + 4) { f.y = -4; f.x = Math.random() * W; }
+        if (f.kind === 'leaf') {
+          ctx.fillStyle = f.c;
+          ctx.beginPath(); ctx.ellipse(f.x + Math.sin(time * 2 + f.p) * 6, f.y, f.s, f.s * 0.5, Math.sin(time * 3 + f.p), 0, Math.PI * 2); ctx.fill();
+          continue;
+        }
         ctx.fillStyle = f.kind === 'ash' ? `rgba(255,${120 + Math.sin(time * 3 + f.p) * 60 | 0},60,0.7)` : 'rgba(255,255,255,0.85)';
         ctx.beginPath(); ctx.arc(f.x, f.y, f.s, 0, Math.PI * 2); ctx.fill();
       }
@@ -1634,5 +1934,5 @@
     return c;
   }
 
-  TD.Render = { load, img, Renderer, towerIcon, mapPreview, enemyIcon, drawTrap, W, H };
+  TD.Render = { load, img, Renderer, towerIcon, mapPreview, enemyIcon, drawTrap, setFaction, W, H };
 })();

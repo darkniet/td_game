@@ -112,6 +112,7 @@
     heroDown: () => { [392, 330, 262].forEach((f, i) => tone('triangle', f, 0, 0.3, 0.08, i * 0.16)); },
     trophy: () => { [784, 988, 1175, 1568].forEach((f, i) => tone('sine', f, 0, i === 3 ? 0.5 : 0.15, 0.1, i * 0.09)); },
     command: () => tone('triangle', 660, 880, 0.08, 0.06),
+    bell: () => { [392, 784, 1176].forEach((f, i) => tone('sine', f, f * 0.995, 1.4 - i * 0.3, 0.12 / (i + 1))); },
     error: () => tone('square', 140, 110, 0.12, 0.05),
     click: () => tone('sine', 900, 600, 0.04, 0.05),
   };

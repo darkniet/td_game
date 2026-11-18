@@ -12,7 +12,15 @@
     horn: '<svg viewBox="0 0 32 32"><path d="M5 13c8 0 13-4 19-9v24c-6-5-11-9-19-9z"/><rect x="2" y="12" width="5" height="8" rx="2"/><path class="mark" d="M24 4c3 3 4 7 4 12s-1 9-4 12"/></svg>',
   };
   const DEFAULT_SETTINGS = { volume: 0.8, shake: true, numbers: true, particles: 'normal', hoverRange: true, coins: true, autoWave: false };
-  const STAT_NAMES = { hero: TD.HERO.name, traps: 'Traps', abilities: 'Abilities' };
+  const STAT_NAMES = { traps: 'Traps', abilities: 'Abilities' };
+  const statName = (key) => (key === 'hero' ? game.heroDef.name : STAT_NAMES[key] || TD.TOWERS[key].name);
+  const CREST_ICONS = {
+    crown: '<path class="sym" d="M7 15l-1-6 3.2 2.6L12 7l2.8 4.6L18 9l-1 6z"/>',
+    leaf: '<path class="sym" d="M7 16c0-5 3.5-8.5 10-9 0 6.5-3.5 10-9 10M8 16l5-5"/>',
+    hammer: '<path class="sym" d="M7 7h8v4H7zM10 11h2v7h-2z"/>',
+    star: '<path class="sym" d="M12 6l1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z"/>',
+  };
+  const crestSvg = (f) => `<svg viewBox="0 0 24 24" class="crest-svg"><path class="shield" d="M12 2l8 3v6c0 5.5-3.4 9.3-8 11-4.6-1.7-8-5.5-8-11V5z" style="fill:${f.color}"/>${CREST_ICONS[f.icon]}</svg>`;
 
   const store = {
     get(key, fallback) {
@@ -31,6 +39,12 @@
 
   TD.settings = Object.assign({}, DEFAULT_SETTINGS, store.get('settings', {}));
 
+  // Faction and hero picked on the menu for the next battle.
+  let pickFaction = store.get('faction', 'kingdom');
+  let pickHero = store.get('hero', 'aldric');
+  if (!TD.FACTIONS[pickFaction]) pickFaction = 'kingdom';
+  if (!TD.HEROES[pickHero]) pickHero = 'aldric';
+
   const ui = {
     canvas: $('#game'), board: $('#board'), stage: $('#stage'), overlay: $('#overlay'), command: $('#command'),
     toasts: $('#toasts'), banner: $('#banner'), abilities: $('#abilities'), traps: $('#traps'),
@@ -39,6 +53,7 @@
     waveBtn: $('#btn-wave'), pauseBtn: $('#btn-pause'), settingsBtn: $('#btn-settings'), autoBtn: $('#btn-auto'),
     speedBtns: [...document.querySelectorAll('#speed button')],
     heroCard: $('#hero-card'), heroLvl: $('#hero-lvl'), heroHp: $('#hero-hp'), heroXp: $('#hero-xp'), heroRespawn: $('#hero-respawn'),
+    heroImg: $('#hero-img'), heroName: $('#hero-name'), factionChip: $('#faction-chip'),
   };
 
   const renderer = new TD.Render.Renderer(ui.canvas);
@@ -179,7 +194,7 @@
       if (l.kills >= 10000) this.unlock('kills10k');
       if (l.flyKills >= 100) this.unlock('skyguard');
       if (l.trapKills >= 100) this.unlock('trapper');
-      if (Object.keys(l.branches).length >= 10) this.unlock('specialist');
+      if (Object.keys(l.branches).length >= 16) this.unlock('specialist');
     },
     // React to simulation events (never in sandbox, where gold and lives are free).
     onEvent(ev) {
@@ -200,6 +215,7 @@
         case 'upgrade':
           if (ev.branch) { l.branches[ev.tower + ':' + ev.branch] = 1; this.dirty = true; }
           if (ev.level >= 4) this.unlock('rank5');
+          if (TD.TOWERS[ev.tower].faction && ev.level >= 2) this.unlock('unique_max');
           break;
         case 'build':
           if (ev.count >= 20) this.unlock('builder');
@@ -220,8 +236,15 @@
       }
     },
     onWin(g, stars) {
-      if (g.mode !== 'campaign') return;
+      if (g.mode !== 'campaign' || g.cheated) return;
       this.unlock('first_win');
+      const l = this.life;
+      l.factionWins = Object.assign({}, l.factionWins, { [g.factionId]: 1 });
+      l.heroWins = Object.assign({}, l.heroWins, { [g.heroId]: 1 });
+      this.dirty = true;
+      if (TD.FACTION_ORDER.every((f) => l.factionWins[f])) this.unlock('all_factions');
+      if (TD.HERO_ORDER.every((h) => l.heroWins[h])) this.unlock('all_heroes');
+      if (g.map.id === 'blackwood') this.unlock('blackwood_win');
       if (g.lives >= g.maxLives) this.unlock('flawless');
       if (g.map.id === 'frostmarch') this.unlock('frost_win');
       const types = Object.keys(g.stats.types);
@@ -245,7 +268,7 @@
     get: () => store.get('save', null),
     put() {
       if (!game || inMenu || game.state !== 'playing') return;
-      store.set('save', { at: Date.now(), name: game.map.name, mode: game.mode, wave: game.wave, data: game.serialize() });
+      store.set('save', { at: Date.now(), name: game.map.name, mode: game.mode, faction: game.factionId, wave: game.wave, data: game.serialize() });
     },
     clear: () => store.remove('save'),
   };
@@ -257,7 +280,8 @@
     paused = false;
     overlayReturn = null;
     clearModes();
-    if (!game) setGame(new TD.Game(TD.MAPS[0], { mode: 'campaign' }));
+    // The idle battlefield behind the menu follows the chosen faction (build list, colours).
+    if (!game || game.factionId !== pickFaction) setGame(new TD.Game(TD.MAPS[0], { mode: 'campaign', faction: pickFaction, hero: pickHero }));
     const best = store.get('best', {});
     const endless = store.get('endless', {});
     const save = saves.get();
@@ -269,12 +293,13 @@
         <div class="tag-line">The horde marches on the realm. Build towers along the road and let none reach the gate.</div>
         ${save ? `<button class="continue" data-act="continue">
           <span class="c-title">Continue</span>
-          <span class="c-sub">${save.name} · ${TD.MODES[save.mode].name} · wave ${save.wave} · ${ago(save.at)}</span>
+          <span class="c-sub">${save.name} · ${TD.MODES[save.mode].name}${save.faction ? ' · ' + TD.FACTIONS[save.faction].short : ''} · wave ${save.wave} · ${ago(save.at)}</span>
         </button>` : ''}
         <div class="menu-bar">
           <div class="seg mode-tabs">${tabs}</div>
         </div>
         <div class="mode-blurb">${TD.MODES[menuMode].blurb}</div>
+        ${councilHtml()}
         <div class="maps"></div>
         <div class="menu-bar small">
           <button class="btn gold" data-act="armory">Royal Armory · <span class="glory-i">${progress.glory()}</span></button>
@@ -283,7 +308,7 @@
           <button class="btn" data-act="settings">Settings</button>
         </div>
         <div class="how">
-          <span><kbd>1</kbd>–<kbd>8</kbd> towers</span>
+          <span><kbd>1</kbd>–<kbd>9</kbd> towers</span>
           <span><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd> traps</span>
           <span><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> abilities</span>
           <span><kbd>H</kbd> hero</span>
@@ -316,6 +341,32 @@
     });
     ui.overlay.classList.add('show');
     refreshAll();
+  }
+
+  // Faction and hero choice for the next battle.
+  function councilHtml() {
+    const f = TD.FACTIONS[pickFaction], h = TD.HEROES[pickHero];
+    const crests = TD.FACTION_ORDER.map((id) => {
+      const x = TD.FACTIONS[id];
+      return `<button class="crest ${id === pickFaction ? 'on' : ''}" data-faction="${id}" title="${x.name}" style="--fc:${x.color}">${crestSvg(x)}<span>${x.short}</span></button>`;
+    }).join('');
+    const heroes = TD.HERO_ORDER.map((id) => {
+      const x = TD.HEROES[id];
+      return `<button class="hero-pick ${id === pickHero ? 'on' : ''}" data-hero="${id}" title="${x.name}, ${x.title}"><img src="assets/units/${x.sprite}.png" alt=""><span>${x.name.split(' ').pop()}</span></button>`;
+    }).join('');
+    const skills = Object.values(h.skills).map((k) => `<b>${k.name}</b>`).join(' · ');
+    return `<div class="council">
+      <div class="pick">
+        <div class="pick-title">Faction</div>
+        <div class="pick-row">${crests}</div>
+        <div class="pick-info" style="--fc:${f.color}"><b>${f.name}.</b> ${f.blurb}<ul>${f.perks.map((p) => `<li>${p}</li>`).join('')}</ul></div>
+      </div>
+      <div class="pick">
+        <div class="pick-title">Hero</div>
+        <div class="pick-row">${heroes}</div>
+        <div class="pick-info"><b>${h.name}</b>, ${h.title}. ${h.blurb}<br><small>${h.ranged ? 'Ranged' : 'Melee'} · ${skills}</small></div>
+      </div>
+    </div>`;
   }
 
   function ago(t) {
@@ -378,7 +429,7 @@
 
   let codexTab = 'foes';
   function showCodex() {
-    const tabs = [['foes', 'Foes'], ['towers', 'Towers'], ['other', 'Hero & Traps']]
+    const tabs = [['foes', 'Foes'], ['towers', 'Towers'], ['factions', 'Factions'], ['other', 'Heroes & Traps']]
       .map(([id, name]) => `<button data-codex="${id}" class="${codexTab === id ? 'on' : ''}">${name}</button>`).join('');
     let body = '';
     if (codexTab === 'foes') {
@@ -397,20 +448,29 @@
           </span></span></div>`;
       }).join('');
     } else if (codexTab === 'towers') {
-      body = TD.TOWER_ORDER.map((type) => {
+      body = TD.TOWER_ORDER.concat(TD.FACTION_ORDER.map((f) => TD.FACTIONS[f].unique)).map((type) => {
         const d = TD.TOWERS[type];
-        const lv = d.levels.map((l, i) => `<span>Lv ${i + 1}: ${l.dmg ? `${l.dmg} dmg` : l.soldiers ? `${l.soldiers}× ${l.hp} hp` : l.buff ? `+${Math.round(l.buff * 100)}% dmg` : `+${l.income} gold`}${l.range ? ` · ${l.range} range` : ''}${l.cost ? ` · ${l.cost}g` : ''}</span>`).join('');
+        const lv = d.levels.map((l, i) => `<span>Lv ${i + 1}: ${l.dmg ? `${l.dmg} dmg` : l.dps ? `${l.dps} dmg/s` : l.soldiers ? `${l.soldiers}× ${l.hp} hp` : l.buff ? `+${Math.round(l.buff * 100)}% dmg` : `+${l.income} gold`}${l.range ? ` · ${l.range} range` : ''}${l.cost ? ` · ${l.cost}g` : ''}</span>`).join('');
         const br = d.branches ? Object.entries(d.branches).map(([, b]) => `<span class="branch-line"><b>${b.name}</b> — ${b.blurb}</span>`).join('') : '';
         return `<div class="entry"><span class="e-pic" data-tower="${type}"></span><span class="e-text">
-          <b>${d.name}</b><span class="e-tags"><span class="tag">${d.cost} gold</span>${d.ground ? '<span class="tag">Ground only</span>' : ''}</span><small>${d.blurb}</small>
+          <b>${d.name}</b><span class="e-tags"><span class="tag">${d.cost} gold</span>${d.faction ? `<span class="tag" style="background:${TD.FACTIONS[d.faction].color}">${TD.FACTIONS[d.faction].short} only</span>` : ''}${d.ground ? '<span class="tag">Ground only</span>' : ''}</span><small>${d.blurb}</small>
           <span class="e-levels">${lv}</span>${br}</span></div>`;
       }).join('');
+    } else if (codexTab === 'factions') {
+      body = TD.FACTION_ORDER.map((id) => {
+        const f = TD.FACTIONS[id];
+        return `<div class="entry"><span class="e-pic crest-pic">${crestSvg(f)}</span><span class="e-text">
+          <b>${f.name}</b><span class="e-tags"><span class="tag" style="background:${f.color}">Hero: ${TD.HEROES[f.hero].name}</span></span><small>${f.blurb}</small>
+          <span class="e-levels">${f.perks.map((p) => `<span>• ${p}</span>`).join('')}</span></span></div>`;
+      }).join('');
     } else {
-      const H = TD.HERO;
-      body = `<div class="entry"><span class="e-pic"><img src="assets/units/hero.png" alt=""></span><span class="e-text">
-          <b>${H.name}</b><span class="e-tags"><span class="tag">Hero</span></span><small>Your champion. Select him with <b>H</b> or by clicking him, then click anywhere to send him there. He blocks foes like a soldier, levels up (max ${H.xp.length}) as foes fall near him, and respawns at the keep.</small>
+      body = TD.HERO_ORDER.map((id) => {
+        const H = TD.HEROES[id];
+        return `<div class="entry"><span class="e-pic"><img src="assets/units/${H.sprite}.png" alt=""></span><span class="e-text">
+          <b>${H.name}</b><span class="e-tags"><span class="tag">${H.title}</span><span class="tag">${H.ranged ? 'Ranged' : 'Melee'}</span></span><small>${H.blurb} Health ${H.hp}, damage ${H.dmg}, armor ${Math.round(H.armor * 100)}%.</small>
           <span class="e-levels">${Object.values(H.skills).map((k) => `<span><b>${k.name}</b> (level ${k.level}): ${k.blurb} ${k.cooldown}s cooldown.</span>`).join('')}</span>
-        </span></div>` + TD.TRAP_ORDER.map((type) => {
+        </span></div>`;
+      }).join('') + TD.TRAP_ORDER.map((type) => {
         const d = TD.TRAPS[type];
         return `<div class="entry"><span class="e-pic" data-trap="${type}"></span><span class="e-text">
           <b>${d.name}</b><span class="e-tags"><span class="tag">${d.cost} gold</span><span class="tag">Key ${d.key.toUpperCase()}</span></span><small>${d.blurb} Placed on road tiles; flyers are unaffected.</small></span></div>`;
@@ -476,9 +536,19 @@
     return c;
   }
 
+  let cardsFor = '';
   function setGame(g) {
     game = g;
     renderer.setGame(game);
+    if (cardsFor !== game.factionId) {
+      cardsFor = game.factionId;
+      buildCards();
+    }
+    ui.heroImg.src = `assets/units/${game.heroDef.sprite}.png`;
+    ui.heroName.textContent = game.heroDef.name;
+    ui.heroCard.title = `${game.heroDef.name} (H): select, then click the map to move`;
+    ui.factionChip.textContent = game.faction.short;
+    ui.factionChip.style.background = game.faction.color;
     acc = 0;
     trophies.castKills = {};
     for (const k in shown) delete shown[k];
@@ -486,11 +556,13 @@
   }
 
   function startGame(map, mode) {
-    setGame(new TD.Game(map, { mode, perks: mode === 'sandbox' ? {} : progress.perks(), seed: (Math.random() * 1e9) | 0 }));
+    setGame(new TD.Game(map, {
+      mode, perks: mode === 'sandbox' ? {} : progress.perks(), seed: (Math.random() * 1e9) | 0, faction: pickFaction, hero: pickHero,
+    }));
     beginPlay();
     const tip = mode === 'sandbox' ? 'Sandbox: gold and lives are unlimited. Send waves whenever you like.'
       : mode === 'endless' ? 'Endless: how many waves can you hold? Elite foes join from wave 12.'
-        : 'Build towers beside the road, then press <b>Start Wave 1</b>. Press <b>H</b> to command your hero.';
+        : `Build towers beside the road, then press <b>Start Wave 1</b>. Press <b>H</b> to command ${game.heroDef.name}.`;
     toast(`<span>${tip}</span>`, '', 5000);
     saves.put();
   }
@@ -556,7 +628,7 @@
     if (!rows.length) return '';
     const top = rows[0][1].dmg || 1;
     return `<div class="report"><div class="report-title">Battle report</div>${rows.map(([key, v]) => `
-      <div class="r-row"><span class="r-name">${STAT_NAMES[key] || TD.TOWERS[key].name}</span>
+      <div class="r-row"><span class="r-name">${statName(key)}</span>
         <span class="r-bar"><i style="width:${Math.max(2, (v.dmg / top) * 100)}%"></i></span>
         <span class="r-val">${big(v.dmg)} dmg · ${v.kills} kills</span></div>`).join('')}</div>`;
   }
@@ -626,6 +698,21 @@
 
   let resetArmed = false;
   ui.overlay.addEventListener('click', (e) => {
+    const pick = e.target.closest('[data-faction], [data-hero]');
+    if (pick) {
+      if (pick.dataset.faction) {
+        pickFaction = pick.dataset.faction;
+        // Picking a faction suggests its own hero; any hero can still be chosen afterwards.
+        pickHero = TD.FACTIONS[pickFaction].hero;
+        store.set('faction', pickFaction);
+      } else {
+        pickHero = pick.dataset.hero;
+      }
+      store.set('hero', pickHero);
+      TD.Audio.play('click');
+      showMenu();
+      return;
+    }
     const modeBtn = e.target.closest('[data-mode]');
     if (modeBtn) {
       menuMode = modeBtn.dataset.mode;
@@ -696,12 +783,15 @@
 
   // ---- Build cards, traps, abilities ---------------------------------------------------
 
-  const cards = {};
+  let cards = {};
   function buildCards() {
-    for (const type of TD.TOWER_ORDER) {
+    ui.buildList.innerHTML = '';
+    cards = {};
+    for (const type of game.towerTypes()) {
       const def = TD.TOWERS[type];
       const b = document.createElement('button');
-      b.className = 'card';
+      b.className = 'card' + (def.faction ? ' faction' : '');
+      if (def.faction) b.style.setProperty('--fc', TD.FACTIONS[def.faction].color);
       b.title = `${def.name} (${def.key}): ${def.blurb}`;
       b.innerHTML = `<kbd>${def.key}</kbd><span class="txt"><span class="name">${def.name}</span><span class="cost">${def.cost}</span></span>`;
       b.prepend(TD.Render.towerIcon(type, 0, 46));
@@ -816,7 +906,7 @@
     if (!game) return;
     const h = game.hero;
     const next = game.heroNextXp();
-    const prev = TD.HERO.xp[h.level - 1] || 0;
+    const prev = TD.HERO_XP[h.level - 1] || 0;
     ui.heroLvl.textContent = h.level;
     ui.heroHp.style.width = (h.alive ? (h.hp / h.maxHp) * 100 : 0) + '%';
     ui.heroXp.style.width = (next == null ? 100 : ((h.xp - prev) / (next - prev)) * 100) + '%';
@@ -854,6 +944,9 @@
   const STAT_ROWS = [
     ['dmg', (t) => (t.kind === 'barracks' ? 'Soldier damage' : t.damage === 'magic' ? 'Magic damage' : 'Damage'), (v) => Math.round(v)],
     ['rate', (t) => (t.kind === 'barracks' ? 'Soldier attacks / sec' : 'Attacks / sec'), (v) => v.toFixed(2)],
+    ['dps', () => 'Damage / sec', (v) => Math.round(v)],
+    ['ramp', () => 'Heats up to', (v) => '×' + v],
+    ['interval', () => 'Tolls every', (v) => v + 's'],
     ['range', () => 'Range', (v) => v.toFixed(1)],
     ['soldiers', () => 'Soldiers'],
     ['hp', () => 'Soldier health'],
@@ -866,6 +959,7 @@
     ['burn', () => 'Burn / sec'],
     ['fireField', () => 'Burning ground', (v) => v + 's'],
     ['corrode', () => 'Armor corrosion', pct],
+    ['cloud', () => 'Poison cloud', (v) => v + 's'],
     ['stun', () => 'Stun', (v) => v + 's'],
     ['slow', () => 'Slow', pct],
     ['aura', () => 'Chill aura', pct],
@@ -879,8 +973,12 @@
     ['bossMult', () => 'Vs. bosses & elites', (v) => '×' + v],
     ['buff', () => 'Damage blessing', (v) => '+' + pct(v)],
     ['haste', () => 'Haste', (v) => '+' + pct(v)],
+    ['reach', () => 'Range blessing', (v) => '+' + pct(v)],
+    ['curse', () => 'Curse (damage taken)', (v) => '+' + pct(v)],
     ['heal', () => 'Heals soldiers / sec'],
     ['income', () => 'Gold each wave', (v) => '+' + v],
+    ['interest', () => 'Interest on your gold', pct],
+    ['lifeEvery', () => 'Restores a life every', (v) => v + ' waves'],
   ];
 
   function statRows(def, s, n) {
@@ -897,7 +995,8 @@
     return `<dl class="stats">${html}</dl>`;
   }
 
-  const kindLabel = (def) => (def.kind === 'support' ? 'support' : def.kind === 'economy' ? 'economy' : def.kind === 'barracks' ? 'melee' : def.damage + ' damage') + (def.ground ? ' · ground only' : '');
+  const KIND_LABEL = { support: 'support', economy: 'economy', barracks: 'melee', pulse: 'stunning toll', aura: 'thorn aura', beam: 'magic beam' };
+  const kindLabel = (def) => (KIND_LABEL[def.kind] || def.damage + ' damage') + (def.faction ? ' · faction tower' : '') + (def.ground ? ' · ground only' : '');
 
   let infoKey = '';
   function refreshInfo() {
@@ -924,7 +1023,7 @@
       ui.info.innerHTML = `
         <div class="head"><div><h3>${def.name}</h3><div class="sub"><span class="coin-i">${fmt(game.towerCost(view.placing))}</span> · ${kindLabel(def)}</div></div></div>
         <p>${def.blurb}</p>
-        ${statRows(def, def.levels[0])}
+        ${statRows(def, game.levelStats(view.placing, 0))}
         <p class="tip">Click a highlighted tile to build. <b>Shift</b>+click keeps building. <b>Esc</b> or right-click cancels.</p>`;
       ui.info.querySelector('.head').prepend(TD.Render.towerIcon(view.placing, 0, 56));
       return;
@@ -939,11 +1038,11 @@
       return;
     }
     if (view.hero) {
-      const H = TD.HERO, h = game.hero;
+      const H = game.heroDef, h = game.hero;
       const skills = Object.values(H.skills).map((k) => `<div class="skill ${h.level >= k.level ? '' : 'locked'}">
         <b>${k.name}</b> <small>${h.level >= k.level ? `${k.cooldown}s cooldown` : `unlocks at level ${k.level}`}</small><span>${k.blurb}</span></div>`).join('');
       ui.info.innerHTML = `
-        <div class="head"><span class="hero-pic"><img src="assets/units/hero.png" alt=""></span><div><h3>${H.name}</h3><div class="sub">Level ${h.level} hero · melee</div></div></div>
+        <div class="head"><span class="hero-pic"><img src="assets/units/${H.sprite}.png" alt=""></span><div><h3>${H.name}</h3><div class="sub">Level ${h.level} ${H.title} · ${H.ranged ? 'ranged' : 'melee'}</div></div></div>
         <div class="xpbar"><i data-live="xp"></i><span data-live="xptext"></span></div>
         <dl class="stats">
           <dt>Health</dt><dd data-live="hp"></dd>
@@ -951,10 +1050,11 @@
           <dt>Attacks / sec</dt><dd>${H.rate}</dd>
           <dt>Armor</dt><dd>${pct(H.armor)}</dd>
           <dt>Regeneration / sec</dt><dd>${H.regen}</dd>
+          ${H.ranged ? `<dt>Range</dt><dd>${H.ranged.range}</dd>` : ''}
           <dt>Damage dealt</dt><dd data-live="hdmg"></dd>
         </dl>
         <div class="skills">${skills}</div>
-        <p class="tip">Click anywhere on the map to send him there. He levels up as foes fall near him and respawns at the keep.</p>`;
+        <p class="tip">Click anywhere on the map to send ${H.name.split(' ').pop()} there. Heroes level up as foes fall near them and respawn at the keep.</p>`;
       return;
     }
     if (t) {
@@ -964,8 +1064,8 @@
       const cost = game.upgradeCost(t);
       const s = game.towerStats(t);
       let next = null;
-      if (cost != null) next = t.branch ? def.branches[t.branch].levels[t.blevel + 1] : def.levels[t.level + 1];
-      const attacks = !def.kind;
+      if (cost != null) next = t.branch ? game.levelStats(t.type, t.level, t.branch, t.blevel + 1) : game.levelStats(t.type, t.level + 1);
+      const attacks = !def.kind || def.kind === 'beam';
       const modes = TD.TARGET_MODES.map((m) => `<button data-mode="${m}" class="${t.mode === m ? 'on' : ''}">${MODE_LABEL[m]}</button>`).join('');
       let branchHtml = '';
       if (game.canBranch(t)) {
@@ -999,7 +1099,7 @@
     ui.info.innerHTML = `
       <h2>Orders</h2>
       <p>Pick a tower and build it beside the road. Click a tower to upgrade it, change its target or sell it.</p>
-      <p class="tip">Press <b>H</b> (or click Sir Aldric) to command your hero. Lay <b>traps</b> on the road with <b>Z X C V</b>.</p>
+      <p class="tip">Press <b>H</b> (or click your hero) to command them. Key <b>9</b> builds your faction\u2019s own tower. Lay <b>traps</b> on the road with <b>Z X C V</b>.</p>
       <p class="tip"><b>Armor</b> blunts arrows, boulders and bolts. <b>Magic</b> ignores it. <b>Flyers</b> follow the dashed lanes and dodge catapults, alchemists, soldiers and traps.</p>
       <p class="tip">Changed your mind? Selling refunds <b>everything</b> spent before the next wave starts.</p>`;
   }
@@ -1007,7 +1107,7 @@
   // Numbers that change every frame are patched in place instead of rebuilding the panel.
   function refreshLiveInfo(t) {
     if (view.hero && game) {
-      const h = game.hero, next = game.heroNextXp(), prev = TD.HERO.xp[h.level - 1] || 0;
+      const h = game.hero, next = game.heroNextXp(), prev = TD.HERO_XP[h.level - 1] || 0;
       const set = (k, v) => { const el = ui.info.querySelector(`[data-live="${k}"]`); if (el) el.textContent = v; };
       const xp = ui.info.querySelector('[data-live="xp"]');
       if (xp) xp.style.width = (next == null ? 100 : ((h.xp - prev) / (next - prev)) * 100) + '%';
@@ -1100,7 +1200,7 @@
       if (lastGold != null && gold > lastGold && !inMenu && !TD.settings.coins) bump(ui.gold, 'bump');
       ui.gold.textContent = fmt(gold);
       lastGold = gold;
-      for (const type of TD.TOWER_ORDER) {
+      for (const type in cards) {
         cards[type].classList.toggle('poor', gold < game.towerCost(type));
         cards[type].querySelector('.cost').textContent = game.sandbox ? 'Free' : fmt(game.towerCost(type));
       }
@@ -1121,7 +1221,7 @@
       ui.chip.textContent = inMenu ? '' : game.mode === 'endless' ? `Endless${best ? ' · best ' + best : ''}` : game.mode === 'sandbox' ? 'Sandbox' : '';
       ui.chip.style.display = ui.chip.textContent ? '' : 'none';
     }
-    for (const type of TD.TOWER_ORDER) cards[type].classList.toggle('on', view.placing === type);
+    for (const type in cards) cards[type].classList.toggle('on', view.placing === type);
 
     let label, enabled = false, pulse = false;
     if (inMenu) {
@@ -1199,17 +1299,26 @@
         case 'upgrade': TD.Audio.play('upgrade'); break;
         case 'sell': TD.Audio.play('sell'); break;
         case 'income': TD.Audio.play('coin'); break;
-        case 'whirlwind': TD.Audio.play('whirlwind'); break;
-        case 'rallyCry': TD.Audio.play('heal'); break;
+        case 'heroSkill':
+          TD.Audio.play({ whirlwind: 'whirlwind', rally: 'heal', slam: 'keg', ironskin: 'upgrade', volley: 'arrow', snare: 'chain', nova: 'freeze', storm: 'lightning' }[ev.skill]);
+          break;
+        case 'bell': TD.Audio.play('bell'); break;
+        case 'lifeRestored':
+          TD.Audio.play('heal');
+          toast('The granary feeds the garrison: <b>+1 life</b>.', 'gold', 1800);
+          break;
+        case 'gateHeld': TD.Audio.play('barricade'); break;
         case 'heroMove': TD.Audio.play('command'); break;
         case 'heroLevel':
           TD.Audio.play('heroLevel');
-          if (ev.level === TD.HERO.skills.rally.level) toast(`<span><b>${TD.HERO.name}</b> learned <b>Rallying Cry</b>!</span>`, 'gold', 3000);
+          for (const k of Object.values(game.heroDef.skills)) {
+            if (k.level === ev.level) toast(`<span><b>${game.heroDef.name}</b> learned <b>${k.name}</b>!</span>`, 'gold', 3000);
+          }
           break;
         case 'soldierDown':
           if (ev.hero) {
             TD.Audio.play('heroDown');
-            toast(`<span><b>${TD.HERO.name}</b> has fallen! He will return to the keep shortly.</span>`, 'bad', 2500);
+            toast(`<span><b>${game.heroDef.name}</b> has fallen and will return to the keep shortly.</span>`, 'bad', 2500);
           } else if (!ev.expired) TD.Audio.play('soldierDown');
           break;
         case 'meteor': TD.Audio.play('meteor'); break;
@@ -1334,7 +1443,7 @@
       const t = game.towerAt(c.x, c.y);
       if (t) { clearModes(); view.selected = t; TD.Audio.play('click'); }
       else if (!overHero(m)) {
-        if (!game.hero.alive) toast(`${TD.HERO.name} is still recovering at the keep.`, 'bad', 1400);
+        if (!game.hero.alive) toast(`${game.heroDef.name} is still recovering at the keep.`, 'bad', 1400);
         else game.moveHero(m.x, m.y);
       }
     } else if (overHero(m)) {
@@ -1462,7 +1571,7 @@
       for (const e of game.enemies) if (e.alive) game.kill(e, null);
     } else if (kind === 'hero') {
       const next = game.heroNextXp();
-      if (next == null) toast(`${TD.HERO.name} is already at max level.`, '', 1400);
+      if (next == null) toast(`${game.heroDef.name} is already at max level.`, '', 1400);
       else game.gainXp(next - game.hero.xp);
     }
     TD.Audio.play('coin');
@@ -1535,13 +1644,13 @@
       return;
     }
     if (!playing()) return;
-    const type = TD.TOWER_ORDER.find((t) => TD.TOWERS[t].key === k);
+    const type = game.towerTypes().find((t) => TD.TOWERS[t].key === k);
     const ability = TD.ABILITY_ORDER.find((a) => TD.ABILITIES[a].key === k);
     const trap = TD.TRAP_ORDER.find((t) => TD.TRAPS[t].key === k);
     if (type) togglePlacing(type);
     else if (ability) useAbility(ability);
     else if (trap) toggleTrap(trap);
-    else if (k === TD.HERO.key) toggleHero();
+    else if (k === TD.HERO_KEY) toggleHero();
     else if (k === 'u') doUpgrade();
     else if (k === 'delete' || k === 'backspace') doSell();
     else if (k === 'n') callWave();
@@ -1597,7 +1706,6 @@
     const el = document.getElementById('load-pct');
     if (el) el.textContent = Math.round(p * 100) + '%';
   }).then(() => {
-    buildCards();
     buildAbilityBar();
     buildTrapBar();
     showMenu();

@@ -54,9 +54,9 @@
         </div>
         <div id="command">
           <button id="hero-card" title="Sir Aldric (H): select, then click the map to send him there">
-            <span class="portrait"><img src="assets/units/hero.png" alt=""><span class="lvl" id="hero-lvl">1</span></span>
+            <span class="portrait"><img id="hero-img" src="assets/units/hero.png" alt=""><span class="lvl" id="hero-lvl">1</span></span>
             <span class="hero-txt">
-              <b>Sir Aldric</b>
+              <b id="hero-name">Sir Aldric</b>
               <span class="hbar"><i id="hero-hp"></i></span>
               <span class="hbar xp"><i id="hero-xp"></i></span>
             </span>
@@ -70,7 +70,7 @@
 
       <aside id="side">
         <section class="panel">
-          <h2>Build</h2>
+          <h2>Build <span id="faction-chip" class="faction-chip"></span></h2>
           <div id="build-list"></div>
         </section>
         <section class="panel" id="info"></section>
