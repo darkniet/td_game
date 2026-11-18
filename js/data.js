@@ -1,0 +1,396 @@
+// Static game data: towers, enemies, waves, abilities, perks and maps.
+'use strict';
+window.TD = window.TD || {};
+
+TD.TILE = 64;
+TD.COLS = 20;
+TD.ROWS = 12;
+
+// Ranges and speeds are measured in tiles; rate is attacks per second.
+// Towers have three base levels; most then pick one of two branches with two ranks each.
+// Branch levels list their full stats (they replace, not add to, the level before).
+TD.TOWERS = {
+  archer: {
+    name: 'Archer Tower', key: '1', cost: 70, damage: 'physical', projectile: 'arrow',
+    blurb: 'Quick volleys at a single foe. Struggles against heavy armor.',
+    levels: [
+      { dmg: 11, rate: 1.5, range: 2.7 },
+      { cost: 60, dmg: 18, rate: 1.75, range: 2.95 },
+      { cost: 110, dmg: 27, rate: 2.1, range: 3.25 },
+    ],
+    branches: {
+      ranger: {
+        name: 'Ranger Lodge', blurb: 'Looses arrows at several foes at once.',
+        levels: [
+          { cost: 150, dmg: 30, rate: 2.2, range: 3.4, multishot: 2 },
+          { cost: 210, dmg: 38, rate: 2.5, range: 3.6, multishot: 3 },
+        ],
+      },
+      marksman: {
+        name: 'Marksman Spire', blurb: 'Long-range shots that crit, pierce armor and finish off the wounded.',
+        levels: [
+          { cost: 170, dmg: 70, rate: 0.95, range: 4.6, crit: 0.2, armorPen: 0.4 },
+          { cost: 240, dmg: 110, rate: 1.05, range: 5.2, crit: 0.3, armorPen: 0.5, execute: 0.12 },
+        ],
+      },
+    },
+  },
+  catapult: {
+    name: 'Catapult', key: '2', cost: 120, damage: 'physical', projectile: 'stone', armorPen: 0.3,
+    blurb: 'Lobs boulders that crush whole crowds. Slow to reload.',
+    levels: [
+      { dmg: 26, rate: 0.42, range: 3.3, splash: 0.95 },
+      { cost: 110, dmg: 44, rate: 0.46, range: 3.5, splash: 1.05 },
+      { cost: 180, dmg: 72, rate: 0.5, range: 3.8, splash: 1.2 },
+    ],
+    branches: {
+      bombard: {
+        name: 'Bombard', blurb: 'Fire pots that set crowds, and later the ground itself, ablaze.', projectile: 'firepot',
+        levels: [
+          { cost: 190, dmg: 66, rate: 0.55, range: 3.8, splash: 1.3, burn: 22, burnDur: 3 },
+          { cost: 250, dmg: 90, rate: 0.6, range: 4.0, splash: 1.4, burn: 40, burnDur: 3.5, fireField: 3 },
+        ],
+      },
+      trebuchet: {
+        name: 'Trebuchet', blurb: 'Colossal boulders hurled across the map that stun what they hit.',
+        levels: [
+          { cost: 210, dmg: 150, rate: 0.33, range: 6.0, splash: 1.05, stun: 0.8 },
+          { cost: 290, dmg: 240, rate: 0.36, range: 7.0, splash: 1.2, stun: 1.2 },
+        ],
+      },
+    },
+  },
+  wizard: {
+    name: 'Wizard Tower', key: '3', cost: 100, damage: 'magic', projectile: 'orb',
+    blurb: 'Arcane bolts ignore armor and slow their mark. Master wizards chain.',
+    levels: [
+      { dmg: 15, rate: 0.9, range: 2.6, slow: 0.35, slowDur: 1.5 },
+      { cost: 90, dmg: 25, rate: 1.0, range: 2.8, slow: 0.45, slowDur: 1.7 },
+      { cost: 150, dmg: 38, rate: 1.1, range: 3.0, slow: 0.55, slowDur: 2.0, chain: 2 },
+    ],
+    branches: {
+      frost: {
+        name: 'Frost Spire', blurb: 'Chills every foe in range and can freeze them solid.', projectile: 'ice',
+        levels: [
+          { cost: 160, dmg: 32, rate: 1.2, range: 3.1, slow: 0.6, slowDur: 2.0, aura: 0.25, freeze: 0.15, freezeDur: 1.0 },
+          { cost: 220, dmg: 46, rate: 1.3, range: 3.3, slow: 0.65, slowDur: 2.2, aura: 0.35, freeze: 0.22, freezeDur: 1.4 },
+        ],
+      },
+      storm: {
+        name: 'Storm Tower', blurb: 'Lightning leaps between many foes and may stun them.', projectile: 'lightning',
+        levels: [
+          { cost: 180, dmg: 55, rate: 0.9, range: 3.2, chain: 4 },
+          { cost: 250, dmg: 80, rate: 1.0, range: 3.4, chain: 6, stunChance: 0.2, stunDur: 0.6 },
+        ],
+      },
+    },
+  },
+  ballista: {
+    name: 'Ballista', key: '4', cost: 160, damage: 'physical', projectile: 'bolt', armorPen: 0.6,
+    blurb: 'Huge bolts fly far, punch through armor and pierce several foes.',
+    levels: [
+      { dmg: 58, rate: 0.4, range: 4.3, pierce: 3 },
+      { cost: 140, dmg: 95, rate: 0.45, range: 4.6, pierce: 4 },
+      { cost: 220, dmg: 150, rate: 0.5, range: 5.0, pierce: 6 },
+    ],
+    branches: {
+      scorpion: {
+        name: 'Scorpion Nest', blurb: 'A repeating ballista that rattles off bolt after bolt.',
+        levels: [
+          { cost: 190, dmg: 66, rate: 1.4, range: 4.6, pierce: 3 },
+          { cost: 250, dmg: 90, rate: 1.8, range: 4.9, pierce: 4 },
+        ],
+      },
+      slayer: {
+        name: 'Dragonslayer', blurb: 'Monstrous bolts that deal bonus damage to bosses and elites.',
+        levels: [
+          { cost: 230, dmg: 300, rate: 0.45, range: 5.6, pierce: 8, bossMult: 2 },
+          { cost: 310, dmg: 450, rate: 0.5, range: 6.2, pierce: 10, bossMult: 3 },
+        ],
+      },
+    },
+  },
+  barracks: {
+    name: 'Barracks', key: '5', cost: 90, damage: 'physical', kind: 'barracks',
+    blurb: 'Trains soldiers who block the road and hold foes in place. Fast outriders slip past.',
+    levels: [
+      { range: 2.4, soldiers: 2, hp: 120, dmg: 8, rate: 1.0, armor: 0.1, respawn: 9 },
+      { cost: 80, range: 2.6, soldiers: 3, hp: 170, dmg: 12, rate: 1.0, armor: 0.2, respawn: 8 },
+      { cost: 130, range: 2.8, soldiers: 3, hp: 250, dmg: 18, rate: 1.1, armor: 0.3, respawn: 7 },
+    ],
+    branches: {
+      paladin: {
+        name: 'Paladin Order', blurb: 'Holy knights in heavy plate who mend their own wounds.',
+        levels: [
+          { cost: 170, range: 2.9, soldiers: 3, hp: 420, dmg: 24, rate: 1.1, armor: 0.45, respawn: 7, regen: 20 },
+          { cost: 230, range: 3.0, soldiers: 3, hp: 600, dmg: 32, rate: 1.2, armor: 0.55, respawn: 6, regen: 35 },
+        ],
+      },
+      berserker: {
+        name: 'Berserker Hall', blurb: 'Fearless axemen who hit hard and fast. Masters cleave nearby foes.',
+        levels: [
+          { cost: 170, range: 2.9, soldiers: 4, hp: 280, dmg: 40, rate: 1.4, armor: 0.15, respawn: 6 },
+          { cost: 230, range: 3.0, soldiers: 4, hp: 340, dmg: 58, rate: 1.6, armor: 0.2, respawn: 5, cleave: 0.5 },
+        ],
+      },
+    },
+  },
+  alchemist: {
+    name: 'Alchemist', key: '6', cost: 110, damage: 'magic', projectile: 'flask',
+    blurb: 'Hurls flasks of liquid fire. Burning ignores armor; master brews corrode it.',
+    levels: [
+      { dmg: 10, rate: 0.8, range: 2.7, splash: 0.75, burn: 12, burnDur: 3 },
+      { cost: 90, dmg: 15, rate: 0.85, range: 2.9, splash: 0.85, burn: 20, burnDur: 3 },
+      { cost: 140, dmg: 22, rate: 0.9, range: 3.1, splash: 0.95, burn: 30, burnDur: 3.5, corrode: 0.25 },
+    ],
+  },
+  chapel: {
+    name: 'Chapel', key: '7', cost: 120, kind: 'support',
+    blurb: 'Blesses nearby towers with extra damage. A cathedral also hastens them and heals soldiers.',
+    levels: [
+      { range: 2.3, buff: 0.15 },
+      { cost: 100, range: 2.6, buff: 0.25 },
+      { cost: 150, range: 2.9, buff: 0.3, haste: 0.15, heal: 15 },
+    ],
+  },
+  windmill: {
+    name: 'Windmill', key: '8', cost: 140, kind: 'economy',
+    blurb: 'Grinds grain into gold. Pays out every time a wave begins.',
+    levels: [
+      { income: 20 },
+      { cost: 110, income: 35 },
+      { cost: 170, income: 55 },
+    ],
+  },
+};
+TD.TOWER_ORDER = ['archer', 'catapult', 'wizard', 'ballista', 'barracks', 'alchemist', 'chapel', 'windmill'];
+TD.TARGET_MODES = ['first', 'last', 'strong', 'close'];
+
+// atk = damage per hit against soldiers (one hit per second).
+TD.ENEMIES = {
+  peasant: {
+    name: 'Peasant Mob', sprite: 'red_peasant', hp: 38, speed: 1.05, armor: 0, gold: 5, lives: 1, scale: 0.62, atk: 3,
+    blurb: 'Unarmored and angry. Comes in crowds.',
+  },
+  footman: {
+    name: 'Footman', sprite: 'red_soldier', hp: 85, speed: 0.9, armor: 0.2, gold: 9, lives: 1, scale: 0.65, atk: 6,
+    blurb: 'Sword and leather. The backbone of the horde.',
+  },
+  outrider: {
+    name: 'Outrider', sprite: 'green_soldier', hp: 55, speed: 1.75, armor: 0, gold: 8, lives: 1, scale: 0.62, atk: 4,
+    noBlock: true,
+    blurb: 'Fast scouts that dash past slow towers and slip around soldiers.',
+  },
+  knight: {
+    name: 'Knight', sprite: 'red_knight', hp: 230, speed: 0.65, armor: 0.55, gold: 18, lives: 2, scale: 0.7, atk: 12,
+    blurb: 'Heavy plate shrugs off arrows. Magic cuts right through.',
+  },
+  priest: {
+    name: 'War Priest', sprite: 'red_mage', hp: 120, speed: 0.8, armor: 0, magicResist: 0.4, gold: 16, lives: 1, scale: 0.66, atk: 5,
+    heal: { amount: 0.08, radius: 1.7, interval: 2.5 },
+    blurb: 'Mends the wounds of nearby allies. Kill it first.',
+  },
+  shieldbearer: {
+    name: 'Shieldbearer', sprite: 'grey_soldier', hp: 160, speed: 0.8, armor: 0.35, magicResist: 0.6, gold: 14, lives: 1, scale: 0.68, atk: 8,
+    blurb: 'Tower shields turn spells aside. Arrows and boulders work better.',
+  },
+  berserker: {
+    name: 'Berserker', sprite: 'green_peasant', hp: 150, speed: 0.85, armor: 0.1, gold: 13, lives: 1, scale: 0.68, atk: 14,
+    rage: true,
+    blurb: 'Flies into a rage and charges when wounded.',
+  },
+  necromancer: {
+    name: 'Necromancer', sprite: 'green_mage', hp: 210, speed: 0.65, armor: 0, magicResist: 0.3, gold: 24, lives: 2, scale: 0.7, atk: 6,
+    summon: { type: 'thrall', count: 2, interval: 6 },
+    blurb: 'Raises the dead to march beside it.',
+  },
+  thrall: {
+    name: 'Thrall', sprite: 'grey_peasant', hp: 32, speed: 1.0, armor: 0, gold: 1, lives: 1, scale: 0.58, atk: 3, minion: true,
+    blurb: 'A risen corpse. Weak, but there are many.',
+  },
+  ironclad: {
+    name: 'Ironclad', sprite: 'grey_knight', hp: 520, speed: 0.55, armor: 0.7, gold: 32, lives: 3, scale: 0.78, atk: 22,
+    blurb: 'A walking fortress. Bring ballistae or wizards.',
+  },
+  warlord: {
+    name: 'Warlord', sprite: 'red_king', hp: 2600, speed: 0.45, armor: 0.35, magicResist: 0.2, gold: 200, lives: 10, scale: 1.0, atk: 50,
+    boss: true,
+    blurb: 'Leader of the horde. Ten lives lost if he reaches the gate.',
+  },
+  witchqueen: {
+    name: 'Witch Queen', sprite: 'green_king', hp: 3400, speed: 0.5, armor: 0.15, magicResist: 0.5, gold: 260, lives: 15, scale: 1.0, atk: 40,
+    boss: true, heal: { amount: 0.05, radius: 2.4, interval: 3 }, summon: { type: 'thrall', count: 3, interval: 5 },
+    blurb: 'Heals her followers and raises thralls as she walks.',
+  },
+  ironking: {
+    name: 'Iron King', sprite: 'grey_king', hp: 4200, speed: 0.4, armor: 0.6, magicResist: 0.3, gold: 260, lives: 15, scale: 1.05, atk: 60,
+    boss: true,
+    blurb: 'Clad in black iron from crown to boot. Bring Dragonslayers.',
+  },
+};
+
+// Elite foes appear in endless mode with one extra trait.
+TD.ELITES = {
+  giant: { name: 'Giant', color: '#ff6b4a', hp: 2.2, scale: 1.25 },
+  swift: { name: 'Swift', color: '#ffd84a', hp: 1.4, speed: 1.45 },
+  armored: { name: 'Armored', color: '#b8c7d6', hp: 1.4, armor: 0.3 },
+  regen: { name: 'Regenerating', color: '#6be08a', hp: 1.5, regen: 0.03 },
+};
+
+// Each group: [enemy, count, gap between spawns (s), delay from wave start (s)]
+TD.WAVES = [
+  [['peasant', 8, 1.1, 0]],
+  [['peasant', 12, 0.8, 0]],
+  [['peasant', 8, 0.9, 0], ['footman', 4, 1.4, 4]],
+  [['footman', 6, 1.2, 0], ['outrider', 5, 0.8, 5]],
+  [['footman', 8, 1.0, 0], ['knight', 2, 2.5, 6]],
+  [['peasant', 22, 0.4, 0], ['outrider', 4, 0.6, 6]],
+  [['knight', 4, 2.0, 0], ['priest', 2, 2.0, 2], ['footman', 6, 0.9, 8]],
+  [['outrider', 12, 0.5, 0], ['berserker', 4, 1.4, 4]],
+  [['knight', 6, 1.6, 0], ['priest', 3, 2.2, 3], ['footman', 8, 0.8, 9]],
+  [['footman', 10, 0.8, 0], ['warlord', 1, 0, 6]],
+  [['shieldbearer', 5, 1.2, 0], ['knight', 7, 1.3, 2], ['priest', 3, 1.6, 4]],
+  [['outrider', 24, 0.35, 0]],
+  [['ironclad', 3, 3.0, 0], ['footman', 8, 0.7, 2], ['berserker', 5, 1.0, 6]],
+  [['knight', 10, 1.0, 0], ['shieldbearer', 6, 1.0, 3], ['priest', 4, 2.0, 2]],
+  [['outrider', 10, 0.5, 0], ['knight', 8, 1.2, 4], ['warlord', 1, 0, 10]],
+  [['peasant', 36, 0.22, 0], ['berserker', 6, 1.0, 3], ['priest', 3, 2.0, 4]],
+  [['ironclad', 6, 2.0, 0], ['necromancer', 2, 4.0, 2], ['priest', 3, 3.0, 1]],
+  [['outrider', 24, 0.3, 0], ['knight', 10, 1.0, 5]],
+  [['ironclad', 8, 1.6, 0], ['shieldbearer', 8, 1.0, 2], ['necromancer', 3, 3.0, 4]],
+  [['ironclad', 6, 2.0, 0], ['priest', 6, 1.5, 2], ['warlord', 2, 6.0, 8], ['ironking', 1, 0, 18]],
+];
+
+// Enemy health multiplier for a given wave (1-based), before the map's own multiplier.
+TD.waveHpScale = (w) => 1 + 0.08 * (w - 1) + 0.0035 * (w - 1) * (w - 1);
+
+// Endless waves are generated from a budget of "threat" that grows every wave.
+// [enemy, first wave it can appear, threat per unit]
+const ENDLESS_POOL = [
+  ['peasant', 1, 1], ['footman', 2, 2], ['outrider', 4, 1.5], ['knight', 5, 5], ['berserker', 7, 3],
+  ['priest', 8, 3], ['shieldbearer', 9, 3.2], ['ironclad', 13, 10], ['necromancer', 15, 7],
+];
+const ENDLESS_BOSSES = ['warlord', 'witchqueen', 'ironking'];
+
+TD.endlessWave = function (w, rand) {
+  const boss = w % 10 === 0;
+  const budget = (6 + 3.5 * (w - 1) + 0.17 * (w - 1) * (w - 1)) * (boss ? 0.6 : 1);
+  const pool = ENDLESS_POOL.filter((p) => p[1] <= w);
+  const groups = [];
+  const n = w < 3 ? 1 : w < 8 ? 2 : 2 + (rand() < 0.55 ? 1 : 0);
+  const used = new Set();
+  let delay = 0;
+  for (let g = 0; g < n; g++) {
+    let pick;
+    for (let tries = 0; tries < 4; tries++) {
+      // Newer enemy types are a little more likely to show up.
+      pick = pool[Math.min(pool.length - 1, Math.floor(Math.pow(rand(), 0.65) * pool.length))];
+      if (!used.has(pick[0])) break;
+    }
+    used.add(pick[0]);
+    const count = Math.max(1, Math.min(60, Math.round(budget / n / pick[2])));
+    // Early waves trickle in; later ones arrive in tighter columns.
+    const spread = 1 + 1.8 * Math.max(0, (10 - w) / 10);
+    const gap = Math.max(0.22, 0.34 * Math.sqrt(pick[2]) * spread * (count > 20 ? 0.75 : 1));
+    groups.push([pick[0], count, +gap.toFixed(2), +delay.toFixed(1)]);
+    delay += Math.min(count * gap * (w < 10 ? 1 : 0.6), 12);
+  }
+  if (boss) groups.push([ENDLESS_BOSSES[(w / 10 - 1) % 3], 1 + Math.floor(w / 40), 5, +(delay * 0.5 + 4).toFixed(1)]);
+  return groups;
+};
+
+TD.eliteChance = (w) => (w < 12 ? 0 : Math.min(0.45, (w - 11) * 0.02));
+
+// Endless foes toughen exponentially on top of the normal curve, so every run ends eventually.
+TD.endlessHpScale = (w) => TD.waveHpScale(w) * (w > 15 ? Math.pow(1.045, w - 15) : 1);
+
+// Player abilities. Damage figures scale with the current wave.
+TD.ABILITIES = {
+  meteor: {
+    name: 'Meteor Strike', key: 'q', cooldown: 50, radius: 1.3, target: 'area',
+    blurb: 'Three blazing rocks crash down on an area and set it alight.',
+  },
+  reinforce: {
+    name: 'Call to Arms', key: 'w', cooldown: 26, radius: 0.5, target: 'road',
+    blurb: 'Two militiamen join the fight on the road for 18 seconds.',
+  },
+  frost: {
+    name: 'Winter’s Grasp', key: 'e', cooldown: 45, radius: 1.8, target: 'area',
+    blurb: 'Freezes every foe in a wide area solid for a few seconds.',
+  },
+  horn: {
+    name: 'War Horn', key: 'r', cooldown: 60, duration: 8,
+    blurb: 'Every tower attacks 40% faster for 8 seconds.',
+  },
+};
+TD.ABILITY_ORDER = ['meteor', 'reinforce', 'frost', 'horn'];
+
+// Permanent upgrades bought with Glory, earned by playing.
+TD.PERKS = [
+  { id: 'chest', name: 'War Chest', blurb: '+40 starting gold per rank.' },
+  { id: 'walls', name: 'Stout Walls', blurb: '+3 lives per rank.' },
+  { id: 'masons', name: 'Master Masons', blurb: 'Towers and upgrades cost 4% less per rank.' },
+  { id: 'steel', name: 'Tempered Steel', blurb: '+5% tower damage per rank.' },
+  { id: 'bounty', name: 'Royal Bounty', blurb: '+8% gold from slain foes per rank.' },
+  { id: 'drill', name: 'Drill Sergeants', blurb: '+15% soldier health per rank.' },
+  { id: 'rites', name: 'Swift Rites', blurb: 'Abilities recharge 10% faster per rank.' },
+  { id: 'lore', name: 'Arcane Lore', blurb: '+15% ability power per rank.' },
+];
+TD.PERK_COSTS = [10, 20, 35];
+
+TD.MODES = {
+  campaign: { name: 'Campaign', blurb: '20 waves per map. Earn up to three stars.' },
+  endless: { name: 'Endless', blurb: 'Waves never stop and keep getting nastier. How long can you hold?' },
+  sandbox: { name: 'Sandbox', blurb: 'Endless waves with unlimited gold and an unbreakable keep. Try anything.' },
+};
+
+// Paths are waypoints in cell coordinates; every leg must be straight. All paths of a map
+// end on the same cell heading north, so the horde marches up into the castle gate.
+TD.MAPS = [
+  {
+    id: 'greenvale', name: 'Greenvale Road', difficulty: 'Squire',
+    blurb: 'A long road winding through farmland. A fine place to learn the trade.',
+    ground: 'grass', hpMul: 1.1, gold: 260, lives: 20, seed: 11, density: 0.36,
+    paths: [[[-1, 3], [3, 3], [3, 9], [8, 9], [8, 4], [12, 4], [12, 10], [16, 10], [16, 5]]],
+    decor: ['pine', 'pine', 'tree_tall', 'tree_slim', 'pine_small', 'bush', 'berry_bush', 'rock_m', 'rock_s', 'log', 'stump'],
+    props: [['mill', 18, 2], ['house', 19, 4], ['market', 18, 6], ['church', 19, 9], ['house_b', 18, 11], ['statue', 14, 2]],
+  },
+  {
+    id: 'twinfords', name: 'Twin Fords', difficulty: 'Squire',
+    blurb: 'Two roads from the west meet before the gate. Watch both flanks.',
+    ground: 'grass', hpMul: 1.0, gold: 280, lives: 20, seed: 31, density: 0.34,
+    paths: [
+      [[-1, 2], [6, 2], [6, 6], [11, 6], [11, 9], [15, 9], [15, 4]],
+      [[-1, 10], [4, 10], [4, 8], [9, 8], [9, 6], [11, 6], [11, 9], [15, 9], [15, 4]],
+    ],
+    decor: ['tree_tall', 'tree_slim', 'pine', 'bush', 'berry_bush', 'rock_m', 'log', 'stump', 'pine_small'],
+    props: [['mill', 18, 1], ['house', 17, 6], ['church', 19, 7], ['market', 18, 10], ['house_b', 13, 1]],
+  },
+  {
+    id: 'dunewatch', name: 'Dunewatch', difficulty: 'Knight',
+    blurb: 'Sun-baked switchbacks with little room to spare. The horde hits harder here.',
+    ground: 'sand', hpMul: 1.5, gold: 240, lives: 15, seed: 4, density: 0.3,
+    paths: [[[2, -1], [2, 7], [6, 7], [6, 3], [10, 3], [10, 10], [15, 10], [15, 5]]],
+    decor: ['clay_m', 'clay_s', 'clay_pair', 'clay_cluster', 'clay_gold', 'tree_slim', 'bush', 'rock_s', 'log'],
+    props: [['cottage', 17, 2], ['market', 18, 4], ['dome', 18, 7], ['cottage', 19, 9], ['stall', 17, 10]],
+  },
+  {
+    id: 'ashenhollow', name: 'Ashen Hollow', difficulty: 'Knight',
+    blurb: 'Scorched earth where roads from north and south converge on a short final stretch.',
+    ground: 'dirt', hpMul: 1.25, gold: 280, lives: 15, seed: 57, density: 0.3,
+    paths: [
+      [[1, -1], [1, 4], [5, 4], [5, 1], [9, 1], [9, 6], [14, 6], [14, 4]],
+      [[-1, 10], [4, 10], [4, 8], [7, 8], [7, 10], [11, 10], [11, 6], [14, 6], [14, 4]],
+    ],
+    decor: ['pine', 'pine_small', 'stump', 'stump', 'log', 'rock_m', 'rock_pair', 'clay_m', 'bush', 'fire'],
+    props: [['house_b', 17, 2], ['cottage', 18, 5], ['stall', 17, 8], ['house', 16, 10], ['statue', 12, 3]],
+  },
+  {
+    id: 'frostmarch', name: 'Frostmarch Pass', difficulty: 'Warlord',
+    blurb: 'A short, frozen pass. Every arrow counts and the keep can take few blows.',
+    ground: 'snow', hpMul: 1.2, gold: 230, lives: 10, seed: 23, density: 0.36,
+    paths: [[[-1, 6], [5, 6], [5, 2], [11, 2], [11, 9], [17, 9], [17, 5]]],
+    decor: ['pine', 'pine', 'pine', 'pine_small', 'rock_m', 'rock_pair', 'rock_cluster', 'rock_s', 'stump'],
+    props: [['house', 19, 1], ['mill', 15, 4], ['church', 19, 7], ['house_b', 14, 11]],
+  },
+];
