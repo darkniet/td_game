@@ -1167,6 +1167,40 @@
         case 'heroSkill':
           this.heroSkillFx(ev, px, py);
           break;
+        case 'bossAbility': {
+          const colors = { warcry: 'rgba(255,90,60,0.95)', quake: 'rgba(170,130,90,0.95)', hex: 'rgba(170,90,230,0.95)', scorch: 'rgba(255,140,50,0.95)' };
+          const col = colors[ev.ability];
+          if (ev.ability === 'warcry' || ev.ability === 'quake') {
+            fx.ring(px, py, ev.radius * T * 1.6, col, 0.6);
+            fx.ring(px, py, ev.radius * T * 1.0, col, 0.45);
+            fx.text(px, py - 70, ev.ability === 'warcry' ? 'War Cry!' : 'Earthshaker!', ev.ability === 'warcry' ? '#ff8d6b' : '#e0c090', true);
+            if (ev.ability === 'quake') {
+              fx.puff(px, py, 24, 'rgba(170,130,90,0.9)', 160, 6);
+              fx.shake = Math.max(fx.shake, 0.9);
+            }
+          } else {
+            const from = [px, py - (TD.ENEMIES[ev.enemy].fly ? FLY_HEIGHT : 30)];
+            for (const t of ev.targets) {
+              const to = [t.x * T, t.y * T - 20];
+              fx.bolt(jagged([from, to], ev.ability === 'hex' ? 14 : 6), col, 0.45);
+              fx.puff(to[0], to[1], 12, col, 60, 4);
+            }
+            fx.text(px, py - 60, ev.ability === 'hex' ? 'Hex!' : 'Scorching Roar!', ev.ability === 'hex' ? '#d6a8ff' : '#ffb070', true);
+          }
+          break;
+        }
+        case 'shatter':
+          for (let i = 0; i < 14; i++) {
+            const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 90;
+            fx.add({ kind: 'dot', x: px, y: py, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, life: 0, max: 0.55, size: 2 + Math.random() * 2, color: Math.random() < 0.5 ? '#e8faff' : '#9fdcff', grav: 260, drag: 1 });
+          }
+          fx.add({ kind: 'text', x: px, y: py - 30, vx: 0, vy: -32, life: 0, max: 0.8, str: 'Shatter!', color: '#bfeaff', small: true, drag: 1 });
+          break;
+        case 'tarIgnite':
+          fx.ring(px, py, 70, 'rgba(255,170,70,0.95)', 0.5);
+          fx.puff(px, py, 20, 'rgba(255,130,40,0.95)', 110, 5, -60);
+          fx.text(px, py - 40, 'Ignite!', '#ffb070');
+          break;
         case 'bell':
           fx.ring(px, py, ev.radius * T * 1.6, 'rgba(255,215,110,0.95)', 0.6);
           fx.ring(px, py, ev.radius * T * 1.1, 'rgba(255,245,200,0.85)', 0.45);
@@ -1313,6 +1347,14 @@
         if (s.range) this.drawRange(ctx, hov.x * T, hov.y * T, game.rangeOf(hov), 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0.35)');
       }
       this.drawHeroMarks(ctx, game, view, time);
+      const ins = view.inspect;
+      if (ins && ins.alive) {
+        ctx.strokeStyle = `rgba(255,255,255,${0.6 + Math.sin(time * 6) * 0.3})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.ellipse(ins.x * T, ins.y * T + 1, 16 * Math.max(0.8, ins.scale), 6.5 * Math.max(0.8, ins.scale), 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // Everything that stands up gets sorted by its feet.
       const items = [];
@@ -1346,6 +1388,7 @@
             ctx.beginPath(); ctx.ellipse(bx, by - 2, 25, 9, 0, 0, Math.PI * 2); ctx.stroke();
           }
           this.drawTowerAnimated(ctx, t, bx, by, time);
+          if (t.disabledUntil > game.time) this.drawDisabled(ctx, t, bx, by, time);
         } else if (it.tr) {
           drawTrap(ctx, it.tr, time, game.time);
           ctx.globalAlpha = 1;
@@ -1459,6 +1502,28 @@
         }
       }
       ctx.restore();
+    }
+
+    drawDisabled(ctx, t, x, y, time) {
+      if (t.disabledBy === 'hex') {
+        const p = 0.55 + Math.sin(time * 6) * 0.2;
+        glow(ctx, x, y - 30, 40, `rgba(140,60,200,${p * 0.5})`, 'rgba(140,60,200,0)');
+        ctx.strokeStyle = `rgba(90,30,130,${p + 0.2})`;
+        ctx.lineWidth = 3;
+        for (const d of [-1, 1]) {
+          ctx.beginPath(); ctx.moveTo(x - 24 * d, y - 64); ctx.lineTo(x + 24 * d, y - 6); ctx.stroke();
+          for (let k = 0; k <= 4; k++) {
+            ctx.beginPath(); ctx.ellipse(x - 24 * d + 12 * d * k, y - 64 + 14.5 * k, 3.5, 2.2, d * 0.9, 0, Math.PI * 2); ctx.stroke();
+          }
+        }
+      } else {
+        ctx.fillStyle = 'rgba(30,20,15,0.35)';
+        ctx.beginPath(); ctx.ellipse(x, y - 24, 26, 30, 0, 0, Math.PI * 2); ctx.fill();
+        for (let k = 0; k < 3; k++) {
+          sprite(ctx, 'env/fire', x - 14 + k * 14, y - 4 - (k % 2) * 16, 0.2 + Math.sin(time * 15 + k * 2) * 0.03);
+        }
+        if (Math.random() < 0.3) this.fx.add({ kind: 'dot', x: x + (Math.random() - 0.5) * 30, y: y - 30, vx: 0, vy: -30, life: 0, max: 0.8, size: 4, color: 'rgba(70,60,55,0.6)', drag: 0.5 });
+      }
     }
 
     drawTowerAnimated(ctx, t, x, y, time) {
@@ -1735,6 +1800,13 @@
       shadow(ctx, x, y, 10 * s.scale, 3.6 * s.scale, 0.25);
       sprite(ctx, name, x + lunge, y - bob, s.scale, s.dirX < 0);
       if (s.hero) this.drawHeroGear(ctx, s, x + lunge, y - bob, time);
+      if (s.stunUntil > this.game.time) {
+        for (let i = 0; i < 3; i++) {
+          const a = time * 6 + i * 2.1;
+          ctx.fillStyle = '#ffe066';
+          ctx.beginPath(); ctx.arc(x + Math.cos(a) * 8, y - s.scale * 56 - 4 + Math.sin(a) * 3, 2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       if (s.flash > 0) {
         ctx.globalAlpha *= Math.min(1, s.flash / 0.09) * 0.7;
         sprite(ctx, null, x + lunge, y - bob, s.scale, s.dirX < 0, tinted(name, '#ffffff'));
@@ -1761,6 +1833,15 @@
       if (def.boss) {
         ctx.fillStyle = 'rgba(255,90,60,0.18)';
         ctx.beginPath(); ctx.ellipse(x, y, 22, 8, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      if (e.hasteUntil > now) {
+        ctx.strokeStyle = 'rgba(255,90,60,0.7)';
+        ctx.lineWidth = 2;
+        const back = -(e.dirX || 0), up = -(e.dirY || 0);
+        for (let k = 0; k < 3; k++) {
+          const ox = (k - 1) * 6 * up, oy = (k - 1) * 6 * -back - 14;
+          ctx.beginPath(); ctx.moveTo(x + back * 10 + ox, y + up * 10 + oy); ctx.lineTo(x + back * 22 + ox, y + up * 22 + oy); ctx.stroke();
+        }
       }
       if (e.elite) {
         ctx.strokeStyle = TD.ELITES[e.elite].color;

@@ -308,23 +308,24 @@ TD.ENEMIES = {
   },
   warlord: {
     name: 'Warlord', sprite: 'red_king', hp: 2600, speed: 0.45, armor: 0.35, magicResist: 0.2, gold: 200, lives: 10, scale: 1.0, atk: 50,
-    boss: true,
-    blurb: 'Leader of the horde. Ten lives lost if he reaches the gate.',
+    boss: true, ability: { type: 'warcry', name: 'War Cry', interval: 8, radius: 2.2, haste: 0.4, duration: 4 },
+    blurb: 'Leader of the horde. His war cry hastens nearby troops. Ten lives lost if he reaches the gate.',
   },
   witchqueen: {
-    name: 'Witch Queen', sprite: 'green_king', hp: 3400, speed: 0.5, armor: 0.15, magicResist: 0.5, gold: 260, lives: 15, scale: 1.0, atk: 40,
+    name: 'Witch Queen', sprite: 'green_king', hp: 3400, speed: 0.5, armor: 0.15, magicResist: 0.5, gold: 260, lives: 10, scale: 1.0, atk: 40,
     boss: true, heal: { amount: 0.05, radius: 2.4, interval: 3 }, summon: { type: 'thrall', count: 3, interval: 5 },
-    blurb: 'Heals her followers and raises thralls as she walks.',
+    ability: { type: 'hex', name: 'Hex', interval: 9, range: 3.0, count: 1, duration: 4 },
+    blurb: 'Heals her followers, raises thralls and hexes towers so they cannot fire.',
   },
   ironking: {
-    name: 'Iron King', sprite: 'grey_king', hp: 4200, speed: 0.4, armor: 0.6, magicResist: 0.3, gold: 260, lives: 15, scale: 1.05, atk: 60,
-    boss: true,
-    blurb: 'Clad in black iron from crown to boot. Bring Dragonslayers.',
+    name: 'Iron King', sprite: 'grey_king', hp: 4200, speed: 0.4, armor: 0.6, magicResist: 0.3, gold: 260, lives: 10, scale: 1.05, atk: 60,
+    boss: true, ability: { type: 'quake', name: 'Earthshaker', interval: 7, radius: 2.0, stun: 1.5, dmg: 60 },
+    blurb: 'Clad in black iron. His stomps stun and batter soldiers and heroes. Bring Dragonslayers.',
   },
   dragon: {
-    name: 'Red Dragon', draw: 'dragon', fly: true, hp: 3600, speed: 0.38, armor: 0.4, magicResist: 0.4, gold: 300, lives: 15, scale: 1.6,
-    boss: true,
-    blurb: 'Soars straight for the keep. Only ranged towers can reach it.',
+    name: 'Red Dragon', draw: 'dragon', fly: true, hp: 3600, speed: 0.38, armor: 0.4, magicResist: 0.4, gold: 300, lives: 10, scale: 1.6,
+    boss: true, ability: { type: 'scorch', name: 'Scorching Roar', interval: 10, range: 3.0, count: 2, duration: 3.5 },
+    blurb: 'Soars straight for the keep, scorching towers below so they stop firing. Only ranged towers can reach it.',
   },
 };
 
@@ -454,8 +455,8 @@ TD.FACTIONS = {
   kingdom: {
     name: 'Kingdom of Aldmere', short: 'Kingdom', tint: 'blue', color: '#4f8fe0', hero: 'aldric', unique: 'belltower', icon: 'crown',
     blurb: 'Steadfast knights and holy orders. Balanced, with tougher soldiers.',
-    perks: ['Soldiers have +20% health', 'Call to Arms summons 3 militia', 'Faction tower: Bell Tower'],
-    mods: { barracks: { hp: 1.2 } }, militia: 3,
+    perks: ['Soldiers have +20% health', 'Call to Arms summons 3 militia', '+10% gold from slain foes', 'Chapels cost 20% less', 'Faction tower: Bell Tower'],
+    mods: { barracks: { hp: 1.2 }, chapel: { cost: 0.8 } }, militia: 3, bounty: 1.1,
   },
   sylvan: {
     name: 'Sylvan Wardens', short: 'Sylvan', tint: 'teal', color: '#2fbfb0', hero: 'lyra', unique: 'grove', icon: 'leaf',
@@ -645,7 +646,7 @@ TD.MAPS = [
   {
     id: 'blackwood', name: 'Blackwood', difficulty: 'Warlord',
     blurb: 'Three roads cut through a dark forest and meet beneath the keep.',
-    ground: 'grass', hpMul: 1.0, gold: 340, lives: 15, seed: 91, density: 0.45, weather: 'leaves',
+    ground: 'grass', hpMul: 1.0, gold: 340, lives: 20, seed: 91, density: 0.45, weather: 'leaves',
     paths: [
       [[-1, 1], [5, 1], [5, 5], [10, 5], [10, 8], [14, 8], [14, 4]],
       [[-1, 10], [6, 10], [6, 8], [10, 8], [14, 8], [14, 4]],

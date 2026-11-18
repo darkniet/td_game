@@ -65,7 +65,7 @@
   let menuMode = store.get('mode', 'campaign');
   let acc = 0, lastT = 0, vtime = 0, saveTimer = 0;
   let overlayReturn = null;
-  const view = { placing: null, trap: null, hover: null, hoverTower: null, mouse: null, selected: null, hero: false, ability: null, rallyFor: null };
+  const view = { placing: null, trap: null, hover: null, hoverTower: null, mouse: null, selected: null, hero: false, ability: null, rallyFor: null, inspect: null };
   const shown = {};
 
   const fmt = (n) => (n === Infinity ? '∞' : Math.floor(n));
@@ -427,9 +427,15 @@
     ui.overlay.classList.add('show');
   }
 
+  const COMBOS = [
+    ['Shatter', 'Frozen foes (Winter\u2019s Grasp, Frost Spire) take 50% extra damage from the next heavy physical hit, which breaks the ice.'],
+    ['Ignite', 'A burning foe that wades into a Tar Pit sets it ablaze, turning it into a fire field for six seconds.'],
+    ['Corrode & crush', 'Alchemists and Plague Doctors strip armor, so arrows, boulders and bolts hit corroded foes much harder.'],
+    ['Hold & bombard', 'Barricades and soldiers bunch foes together: perfect targets for catapults, cannons and Meteor Strike.'],
+  ];
   let codexTab = 'foes';
   function showCodex() {
-    const tabs = [['foes', 'Foes'], ['towers', 'Towers'], ['factions', 'Factions'], ['other', 'Heroes & Traps']]
+    const tabs = [['foes', 'Foes'], ['towers', 'Towers'], ['factions', 'Factions'], ['other', 'Heroes, Traps & Combos']]
       .map(([id, name]) => `<button data-codex="${id}" class="${codexTab === id ? 'on' : ''}">${name}</button>`).join('');
     let body = '';
     if (codexTab === 'foes') {
@@ -474,7 +480,8 @@
         const d = TD.TRAPS[type];
         return `<div class="entry"><span class="e-pic" data-trap="${type}"></span><span class="e-text">
           <b>${d.name}</b><span class="e-tags"><span class="tag">${d.cost} gold</span><span class="tag">Key ${d.key.toUpperCase()}</span></span><small>${d.blurb} Placed on road tiles; flyers are unaffected.</small></span></div>`;
-      }).join('');
+      }).join('') + COMBOS.map(([name, text]) => `<div class="entry"><span class="e-pic combo-pic">✦</span><span class="e-text">
+          <b>${name}</b><span class="e-tags"><span class="tag">Combo</span></span><small>${text}</small></span></div>`).join('');
     }
     ui.overlay.innerHTML = `
       <div class="dialog wide codex">
@@ -840,7 +847,7 @@
   }
 
   function clearModes() {
-    view.placing = view.trap = view.selected = view.ability = view.rallyFor = null;
+    view.placing = view.trap = view.selected = view.ability = view.rallyFor = view.inspect = null;
     view.hero = false;
   }
 
@@ -942,6 +949,7 @@
 
   const pct = (v) => Math.round(v * 100) + '%';
   const STAT_ROWS = [
+    ['estDps', () => 'Damage / sec (est.)', (v) => Math.round(v)],
     ['dmg', (t) => (t.kind === 'barracks' ? 'Soldier damage' : t.damage === 'magic' ? 'Magic damage' : 'Damage'), (v) => Math.round(v)],
     ['rate', (t) => (t.kind === 'barracks' ? 'Soldier attacks / sec' : 'Attacks / sec'), (v) => v.toFixed(2)],
     ['dps', () => 'Damage / sec', (v) => Math.round(v)],
@@ -981,9 +989,13 @@
     ['lifeEvery', () => 'Restores a life every', (v) => v + ' waves'],
   ];
 
+  // Rough single-target damage per second before buffs and armor (null when it doesn't apply).
+  const estDps = (st) => (st == null || st.dps != null ? null : st.interval ? st.dmg / st.interval
+    : st.soldiers ? st.soldiers * st.dmg * st.rate : st.dmg != null && st.rate ? st.dmg * st.rate * (st.multishot || 1) : null);
+
   function statRows(def, s, n) {
-    const merged = Object.assign({ armorPen: def.armorPen }, s);
-    const next = n ? Object.assign({ armorPen: def.armorPen }, n) : null;
+    const merged = Object.assign({ armorPen: def.armorPen, estDps: estDps(s) }, s);
+    const next = n ? Object.assign({ armorPen: def.armorPen, estDps: estDps(n) }, n) : null;
     let html = '';
     for (const [key, label, f] of STAT_ROWS) {
       const a = merged[key], b = next ? next[key] : null;
@@ -994,6 +1006,13 @@
     }
     return `<dl class="stats">${html}</dl>`;
   }
+
+  const ABILITY_TEXT = {
+    warcry: (a) => `Every ${a.interval}s, nearby foes run ${pct(a.haste)} faster for ${a.duration}s.`,
+    quake: (a) => `Every ${a.interval}s, stuns and batters soldiers and heroes around it for ${a.stun}s.`,
+    hex: (a) => `Every ${a.interval}s, hexes the nearest tower so it can't act for ${a.duration}s.`,
+    scorch: (a) => `Every ${a.interval}s, scorches up to ${a.count} towers below so they stop for ${a.duration}s.`,
+  };
 
   const KIND_LABEL = { support: 'support', economy: 'economy', barracks: 'melee', pulse: 'stunning toll', aura: 'thorn aura', beam: 'magic beam' };
   const kindLabel = (def) => (KIND_LABEL[def.kind] || def.damage + ' damage') + (def.faction ? ' · faction tower' : '') + (def.ground ? ' · ground only' : '');
@@ -1006,6 +1025,10 @@
     else if (view.placing) key = 'p' + view.placing + (game.gold >= game.towerCost(view.placing));
     else if (view.trap) key = 'trap' + view.trap;
     else if (view.hero) key = 'hero' + game.hero.level;
+    else if (view.inspect) {
+      if (!view.inspect.alive) view.inspect = null;
+      key = view.inspect ? 'foe' + view.inspect.id : 'hint';
+    }
     else if (t) {
       const branches = game.canBranch(t) ? Object.keys(t.def.branches).map((b) => game.gold >= game.branchCost(t, b)).join() : '';
       key = ['t', t.id, game.tier(t), t.mode, game.gold >= (game.upgradeCost(t) ?? Infinity), branches, game.state, !!view.rallyFor, game.fullRefund(t), game.sellValue(t)].join();
@@ -1035,6 +1058,31 @@
         <p>${def.blurb}</p>
         <p class="tip">Click a road tile to lay it. Traps grow stronger in later waves. Flyers pass over them.</p>`;
       ui.info.querySelector('.head').prepend(trapIcon(view.trap, 56));
+      return;
+    }
+    if (view.inspect) {
+      const e = view.inspect, d = e.def;
+      const tags = [d.boss && 'Boss', e.elite && TD.ELITES[e.elite].name + ' elite', d.fly && 'Flying', d.noBlock && 'Slips past soldiers', d.minion && 'Summoned']
+        .filter(Boolean);
+      const traits = [];
+      if (d.heal) traits.push(['Heals allies', `Restores ${pct(d.heal.amount)} health to nearby foes every ${d.heal.interval}s.`]);
+      if (d.summon) traits.push(['Summoner', `Raises ${d.summon.count} thralls every ${d.summon.interval}s.`]);
+      if (d.rage) traits.push(['Enrages', 'Runs 80% faster below half health.']);
+      if (d.ability) traits.push([d.ability.name, ABILITY_TEXT[d.ability.type](d.ability)]);
+      if (e.regen) traits.push(['Regenerates', `${pct(e.regen)} of its health per second while not being hit.`]);
+      ui.info.innerHTML = `
+        <div class="head"><span class="hero-pic"><img src="${enemySrc(e.type)}" alt=""></span><div><h3>${d.name}</h3><div class="sub">${tags.join(' · ') || 'Foe'}</div></div></div>
+        <div class="xpbar hpbar"><i data-live="ehp"></i><span data-live="ehptext"></span></div>
+        <dl class="stats">
+          <dt>Armor</dt><dd data-live="earmor"></dd>
+          <dt>Magic resist</dt><dd>${pct(e.mres)}</dd>
+          <dt>Speed</dt><dd data-live="espeed"></dd>
+          <dt>Lives lost if it gets through</dt><dd>${d.lives}</dd>
+          <dt>Bounty</dt><dd>${Math.round(d.gold * game.mods.bounty * (e.elite ? 2 : 1))}</dd>
+        </dl>
+        ${traits.length ? `<div class="skills">${traits.map(([name, text]) => `<div class="skill"><b>${name}</b><span>${text}</span></div>`).join('')}</div>` : ''}
+        <div class="statuses" data-live="estatus"></div>
+        <p class="tip">${d.blurb}</p>`;
       return;
     }
     if (view.hero) {
@@ -1101,12 +1149,30 @@
       <p>Pick a tower and build it beside the road. Click a tower to upgrade it, change its target or sell it.</p>
       <p class="tip">Press <b>H</b> (or click your hero) to command them. Key <b>9</b> builds your faction\u2019s own tower. Lay <b>traps</b> on the road with <b>Z X C V</b>.</p>
       <p class="tip"><b>Armor</b> blunts arrows, boulders and bolts. <b>Magic</b> ignores it. <b>Flyers</b> follow the dashed lanes and dodge catapults, alchemists, soldiers and traps.</p>
+      <p class="tip"><b>Click a foe</b> to inspect it. Combos: heavy hits <b>shatter</b> frozen foes; burning foes <b>ignite</b> tar pits.</p>
       <p class="tip">Changed your mind? Selling refunds <b>everything</b> spent before the next wave starts.</p>`;
   }
 
   // Numbers that change every frame are patched in place instead of rebuilding the panel.
   function refreshLiveInfo(t) {
-    if (view.hero && game) {
+    if (view.inspect && game) {
+      const e = view.inspect, now = game.time;
+      const set = (k, v) => { const el = ui.info.querySelector(`[data-live="${k}"]`); if (el && el.innerHTML !== v) el.innerHTML = v; };
+      const bar = ui.info.querySelector('[data-live="ehp"]');
+      if (bar) bar.style.width = Math.max(0, (e.hp / e.maxHp) * 100) + '%';
+      set('ehptext', `${Math.max(0, Math.ceil(e.hp))} / ${e.maxHp}`);
+      const armor = game.armorOf(e);
+      set('earmor', pct(armor) + (armor < e.armor ? ' <span class="up">(corroded)</span>' : ''));
+      set('espeed', e.held ? 'held in place' : game.speedOf(e).toFixed(2));
+      const st = [];
+      if (e.stunUntil > now) st.push(e.frozen ? 'Frozen' : 'Stunned');
+      else if (e.slowUntil > now) st.push('Slowed');
+      if (e.burnUntil > now) st.push('Burning');
+      if (e.corrodeUntil > now) st.push('Corroded');
+      if (e.curse > 0) st.push('Cursed');
+      if (e.hasteUntil > now) st.push('Hasted');
+      set('estatus', st.map((x) => `<span class="chip-s s-${x.toLowerCase()}">${x}</span>`).join(''));
+    } else if (view.hero && game) {
       const h = game.hero, next = game.heroNextXp(), prev = TD.HERO_XP[h.level - 1] || 0;
       const set = (k, v) => { const el = ui.info.querySelector(`[data-live="${k}"]`); if (el) el.textContent = v; };
       const xp = ui.info.querySelector('[data-live="xp"]');
@@ -1308,6 +1374,23 @@
           toast('The granary feeds the garrison: <b>+1 life</b>.', 'gold', 1800);
           break;
         case 'gateHeld': TD.Audio.play('barricade'); break;
+        case 'bossAbility': {
+          TD.Audio.play({ warcry: 'wave', quake: 'keg', hex: 'summon', scorch: 'firepot' }[ev.ability]);
+          if (!shown['ability:' + ev.ability]) {
+            shown['ability:' + ev.ability] = true;
+            const d = TD.ENEMIES[ev.enemy];
+            toast(`<img src="${enemySrc(ev.enemy)}" alt=""><span><b>${d.ability.name}!</b> ${ABILITY_TEXT[ev.ability](d.ability)}</span>`, 'bad', 4500);
+          }
+          break;
+        }
+        case 'shatter':
+          TD.Audio.play('flask');
+          if (!shown.shatter) { shown.shatter = true; toast('<span><b>Shatter!</b> Heavy hits on frozen foes deal 50% extra damage.</span>', 'gold', 3500); }
+          break;
+        case 'tarIgnite':
+          TD.Audio.play('firepot');
+          if (!shown.ignite) { shown.ignite = true; toast('<span><b>Ignite!</b> A burning foe set the tar pit ablaze.</span>', 'gold', 3500); }
+          break;
         case 'heroMove': TD.Audio.play('command'); break;
         case 'heroLevel':
           TD.Audio.play('heroLevel');
@@ -1451,12 +1534,32 @@
       view.hero = true;
       TD.Audio.play('command');
     } else {
-      const t = game.towerAt(c.x, c.y);
-      if (t) TD.Audio.play('click');
-      view.selected = t;
+      const foe = enemyAt(m);
+      clearModes();
+      if (foe) {
+        view.inspect = foe;
+        TD.Audio.play('click');
+      } else {
+        const t = game.towerAt(c.x, c.y);
+        if (t) TD.Audio.play('click');
+        view.selected = t;
+      }
     }
     refreshAll();
   });
+
+  // The foe drawn under the cursor, if any (flyers are drawn higher up).
+  function enemyAt(m) {
+    let best = null, bd = Infinity;
+    for (const e of game.enemies) {
+      if (!e.alive) continue;
+      const cy = e.def.fly ? e.y - 0.6 : e.y - 0.3 * Math.max(1, e.scale / 0.65);
+      const r = 0.4 * Math.max(1, e.scale);
+      const d2 = (m.x - e.x) ** 2 + (m.y - cy) ** 2;
+      if (d2 < r * r && d2 < bd) { bd = d2; best = e; }
+    }
+    return best;
+  }
 
   function cancel() {
     if (view.ability || view.rallyFor) {
@@ -1464,7 +1567,7 @@
       refreshAll();
       return true;
     }
-    if (view.placing || view.trap || view.selected || view.hero) {
+    if (view.placing || view.trap || view.selected || view.hero || view.inspect) {
       clearModes();
       refreshAll();
       return true;

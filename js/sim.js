@@ -206,7 +206,7 @@
       const pk = (id) => this.perks[id] || 0;
       this.mods = {
         gold: 40 * pk('chest'), lives: 3 * pk('walls'), cost: 1 - 0.04 * pk('masons'), dmg: 1 + 0.05 * pk('steel'),
-        bounty: 1 + 0.08 * pk('bounty'), soldierHp: 1 + 0.15 * pk('drill'),
+        bounty: (1 + 0.08 * pk('bounty')) * (this.faction.bounty || 1), soldierHp: 1 + 0.15 * pk('drill'),
         cooldown: (1 - 0.1 * pk('rites')) * (this.faction.cooldown || 1), power: (1 + 0.15 * pk('lore')) * (this.faction.power || 1),
         range: 1 + 0.04 * pk('fletching'), heroXp: 1 + 0.2 * pk('heroism'), heroHp: 1 + 0.1 * pk('heroism'),
         trapCost: (1 - 0.1 * pk('trapmaster')) * (this.faction.trapCost || 1), trapPower: 1 + 0.15 * pk('trapmaster'),
@@ -364,6 +364,7 @@
         blockedBy: null, held: false, heldFor: 0, freeUntil: 0, hurtAt: -9,
         healT: def.heal ? def.heal.interval * (0.3 + r() * 0.7) : 0,
         summonT: def.summon ? def.summon.interval * (0.5 + r() * 0.5) : 0,
+        abilityT: def.ability ? def.ability.interval * 0.6 : 0, haste: 0, hasteUntil: 0,
       };
       this.placeEnemy(e);
       this.enemies.push(e);
@@ -386,6 +387,7 @@
       if (e.stunUntil > this.time) return 0;
       let s = e.speed * (e.slowUntil > this.time ? 1 - e.slow : 1);
       if (e.def.rage && e.hp < e.maxHp * 0.5) s *= 1.8;
+      if (e.hasteUntil > this.time) s *= 1 + e.haste;
       return s;
     }
 
@@ -411,6 +413,12 @@
     damage(e, amount, kind, pen, bossMult, src) {
       if (!e.alive) return 0;
       if (bossMult && (e.def.boss || e.elite)) amount *= bossMult;
+      if (kind === 'physical' && e.frozen && e.stunUntil > this.time && amount >= 15) {
+        amount *= 1.5;
+        e.stunUntil = this.time;
+        e.frozen = false;
+        this.emit('shatter', { x: e.x, y: this.aimY(e) });
+      }
       const mult = kind === 'magic' ? 1 - e.mres : kind === 'true' ? 1 : 1 - this.armorOf(e) * (1 - (pen || 0));
       const dealt = amount * mult * (1 + (e.curse || 0));
       this.credit(src, Math.min(dealt, Math.max(0, e.hp)));
@@ -676,7 +684,17 @@
             this.emit('spike', { x: tr.x, y: tr.y });
           }
         } else if (tr.type === 'tar') {
-          for (const e of this.enemies) if (near(e, tr, 0.5)) this.applySlow(e, tr.def.slow, 0.3);
+          for (const e of this.enemies) {
+            if (!near(e, tr, 0.5)) continue;
+            this.applySlow(e, tr.def.slow, 0.3);
+            if (e.burnUntil > this.time) {
+              const k = Math.sqrt(this.hpScale(Math.max(1, this.wave)) / this.map.hpMul);
+              this.hazards.push({ x: tr.x, y: tr.y, r: 0.75, dps: (30 + 4 * this.wave) * k * this.mods.trapPower, until: this.time + 6, t0: this.time, src: tr });
+              tr.uses = 0;
+              this.emit('tarIgnite', { x: tr.x, y: tr.y });
+              break;
+            }
+          }
         } else if (tr.type === 'keg') {
           if (this.enemies.some((e) => near(e, tr, 0.45))) {
             for (const e of this.enemies) if (near(e, tr, tr.def.radius)) this.damage(e, tr.dmg, 'physical', 0.5, 0, tr);
@@ -914,6 +932,7 @@
           this.removeSoldier(s);
           continue;
         }
+        if (s.stunUntil > this.time) continue;
         if (s.hero) this.heroSkills(s, dt);
         const home = { x: s.hx, y: s.hy };
         const ranged = s.hero && this.heroDef.ranged;
@@ -1247,6 +1266,7 @@
             e.healT = 0.4;
           }
         }
+        if (e.def.ability && e.stunUntil <= this.time && (e.abilityT -= dt) <= 0 && e.dist > 1.5) this.bossAbility(e);
         const sm = e.def.summon;
         if (sm && e.stunUntil <= this.time && (e.summonT -= dt) <= 0 && e.dist > 1) {
           e.summonT = sm.interval;
@@ -1257,9 +1277,46 @@
       }
     }
 
+    // Boss signature moves. Returns quietly (and retries soon) when nothing is in reach.
+    bossAbility(e) {
+      const a = e.def.ability;
+      const hits = [];
+      if (a.type === 'warcry') {
+        for (const o of this.enemies) {
+          if (!o.alive || dist2(o, e) > a.radius * a.radius) continue;
+          o.haste = a.haste;
+          o.hasteUntil = this.time + a.duration;
+          hits.push({ x: o.x, y: o.y });
+        }
+      } else if (a.type === 'quake') {
+        const k = Math.sqrt(TD.waveHpScale(e.wave));
+        for (const s of this.soldiers) {
+          if (!s.alive || dist2(s, e) > a.radius * a.radius) continue;
+          s.stunUntil = this.time + a.stun;
+          this.hitSoldier(s, a.dmg * k);
+          hits.push({ x: s.x, y: s.y });
+        }
+      } else {
+        // Hex and Scorch silence the nearest working towers.
+        const towers = this.towers.filter((t) => !(t.disabledUntil > this.time) && (t.x - e.x) ** 2 + (t.y - e.y) ** 2 <= a.range * a.range)
+          .sort((p, q) => dist2(p, e) - dist2(q, e)).slice(0, a.count);
+        for (const t of towers) {
+          t.disabledUntil = this.time + a.duration;
+          t.disabledBy = a.type;
+          hits.push({ x: t.x, y: t.y });
+        }
+      }
+      if (!hits.length) {
+        e.abilityT = 1;
+        return;
+      }
+      e.abilityT = a.interval;
+      this.emit('bossAbility', { ability: a.type, enemy: e.type, x: e.x, y: e.y, radius: a.radius || a.range, targets: hits });
+    }
+
     updateTowers(dt) {
       // Chapel blessings: each tower takes the strongest one in range.
-      const chapels = this.towers.filter((t) => t.def.kind === 'support');
+      const chapels = this.towers.filter((t) => t.def.kind === 'support' && !(t.disabledUntil > this.time));
       for (const t of this.towers) {
         t.buff = 0; t.haste = 0; t.reach = 0;
         for (const c of chapels) {
@@ -1284,6 +1341,10 @@
       for (const t of this.towers) {
         const s = this.towerStats(t);
         t.fireT += dt;
+        if (t.disabledUntil > this.time) {
+          t.beam = null;
+          continue;
+        }
         if (t.def.kind === 'support') {
           if (s.heal) {
             for (const sol of this.soldiers) {
@@ -1500,18 +1561,19 @@
         abilities: Object.fromEntries(Object.entries(this.abilities).map(([k, v]) => [k, v.cd])),
         seen: [...this.seen],
         towers: this.towers.map((t) => ({
-          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown', 'pulseT', 'fed']),
+          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown', 'pulseT', 'fed', 'disabledUntil', 'disabledBy']),
           rally: t.rally && { x: t.rally.x, y: t.rally.y },
         })),
         traps: this.traps.map((tr) => ({ ...pick(tr, ['id', 'type', 'cx', 'cy', 'uses', 'dmg', 'hp', 'maxHp']), until: num(tr.until) })),
         enemies: this.enemies.filter((e) => e.alive).map((e) => ({
           ...pick(e, ['id', 'type', 'wave', 'hp', 'maxHp', 'dist', 'speed', 'armor', 'mres', 'scale', 'regen', 'elite', 'atk', 'ox', 'oy',
-            'slow', 'slowUntil', 'stunUntil', 'frozen', 'burnDps', 'burnUntil', 'corrode', 'corrodeUntil', 'phase', 'healT', 'summonT', 'atkCd', 'hurtAt', 'freeUntil']),
+            'slow', 'slowUntil', 'stunUntil', 'frozen', 'burnDps', 'burnUntil', 'corrode', 'corrodeUntil', 'phase', 'healT', 'summonT', 'atkCd', 'hurtAt', 'freeUntil',
+            'abilityT', 'haste', 'hasteUntil']),
           route: e.path.index, fly: !!e.def.fly,
         })),
         soldiers: this.soldiers.map((s) => ({
           ...pick(s, ['id', 'hero', 'x', 'y', 'hx', 'hy', 'hp', 'maxHp', 'dmg', 'rate', 'armor', 'regen', 'cleave', 'alive', 'respawn', 'sprite', 'scale',
-            'level', 'xp', 'skillCd', 'ordered', 'dmgDealt', 'kills', 'shieldUntil']),
+            'level', 'xp', 'skillCd', 'ordered', 'dmgDealt', 'kills', 'shieldUntil', 'stunUntil']),
           tower: s.tower ? s.tower.id : null, until: num(s.until), militia: !s.tower && !s.hero,
         })),
         hazards: this.hazards.map((h) => pick(h, ['kind', 'x', 'y', 'r', 'dps', 'corrode', 'until', 't0'])),
