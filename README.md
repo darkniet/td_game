@@ -70,3 +70,7 @@ assets/           sprites + manifest.js
 ## Credits
 
 Sprites from the [“Medieval RTS” pack by Kenney](https://kenney.nl) (CC0, see `assets/KENNEY_LICENSE.txt`), downloaded via [OpenGameArt](https://opengameart.org/content/medieval-rts-120). Several tower sprites are recolors of Kenney sprites. Fonts: Pirata One and Alegreya Sans from Google Fonts.
+
+## License
+
+Code is released under the [MIT License](LICENSE). The Kenney sprites in `assets/` keep their own CC0 license.
