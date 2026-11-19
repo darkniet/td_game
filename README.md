@@ -14,7 +14,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 
 - **3 modes**
   - **Campaign**: 20 waves per map, earn up to 3 stars.
-  - **Endless**: procedurally generated waves that never stop, with elite foes from wave 12 and a boss every 10 waves. Your best wave is saved per map.
+  - **Endless**: procedurally generated waves that never stop, with elite foes from wave 12 and a boss every 10 waves. Bounties grow with the wave, and fully upgraded towers keep training **veteran ranks** (+25% damage each, no limit), so a full map is never a dead end. Your best wave is saved per map.
   - **Sandbox**: endless waves with unlimited gold and lives.
 - **7 maps**: Greenvale Road, Twin Fords, Dunewatch, Ashen Hollow, Frostmarch Pass, Kingsbridge and Blackwood (three entrances).
 - **4 playable factions**, each with its own colours, stat bonuses and drawbacks, and a unique faction tower:
@@ -31,7 +31,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 - **Combos**: heavy hits *shatter* frozen foes for 50% extra damage, and burning foes *ignite* tar pits into fire fields.
 - **Click any foe** to inspect its health, armor, speed, traits and current status effects. Tower panels show estimated damage per second.
 - **Royal Armory**: 14 permanent perks bought with Glory, which you earn in every game.
-- **29 trophies** that pay out Glory, and a **Codex** of every foe, tower and trap you've met.
+- **30 trophies** that pay out Glory, and a **Codex** of every foe, tower and trap you've met.
 - **Quality of life**: auto-save with Continue, a full refund when you sell before the next wave, per-tower damage stats and an end-of-battle report, auto-waves, 1×–5× speed, and settings for volume, shake, particles and more.
 
 ### Controls

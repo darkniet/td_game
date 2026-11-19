@@ -443,7 +443,8 @@
     kill(e, src) {
       e.alive = false;
       if (e.blockedBy && e.blockedBy.target === e) e.blockedBy.target = null;
-      const gold = Math.max(1, Math.round(e.def.gold * this.mods.bounty * (e.elite ? 2 : 1)));
+      const late = this.endless ? TD.endlessBounty(e.wave) : 1;
+      const gold = Math.max(1, Math.round(e.def.gold * this.mods.bounty * (e.elite ? 2 : 1) * late));
       this.gold += gold;
       this.stats.kills++;
       this.pending[e.wave]--;
@@ -504,8 +505,8 @@
     branchDef(t) { return t.branch ? t.def.branches[t.branch] : null; }
 
     // Stats of a tower level after faction and perk modifiers (cached, never mutated).
-    levelStats(type, level, branch, blevel) {
-      const key = type + '|' + level + '|' + (branch || '') + '|' + (blevel || 0);
+    levelStats(type, level, branch, blevel, vet) {
+      const key = type + '|' + level + '|' + (branch || '') + '|' + (blevel || 0) + '|' + (vet || 0);
       let s = this.statCache.get(key);
       if (!s) {
         const def = TD.TOWERS[type];
@@ -516,12 +517,16 @@
         if (s.range != null) s.range *= (m.range || 1) * this.mods.range;
         if (s.armor != null && m.armor) s.armor = Math.min(0.85, s.armor + m.armor);
         if (s.slow != null && m.slow) s.slow = Math.min(0.85, s.slow + m.slow);
+        if (vet) {
+          const k = Math.pow(TD.VETERAN.mult, vet);
+          for (const stat of ['dmg', 'dps', 'burn', 'hp']) if (s[stat] != null) s[stat] *= k;
+        }
         this.statCache.set(key, s);
       }
       return s;
     }
 
-    towerStats(t) { return this.levelStats(t.type, t.level, t.branch, t.blevel); }
+    towerStats(t) { return this.levelStats(t.type, t.level, t.branch, t.blevel, t.vet); }
 
     // Range including an Oracle's blessing.
     rangeOf(t) { return (this.towerStats(t).range || 0) * (1 + (t.reach || 0)); }
@@ -540,7 +545,21 @@
       if (!t.branch && t.level < t.def.levels.length - 1) return this.costOf(t.def.levels[t.level + 1].cost * fc);
       const b = this.branchDef(t);
       if (b && t.blevel < b.levels.length - 1) return this.costOf(b.levels[t.blevel + 1].cost * fc);
+      if (this.canVeteran(t)) return this.veteranCost(t);
       return null;
+    }
+
+    // Veteran ranks: endless training for combat towers that have nothing left to upgrade.
+    canVeteran(t) {
+      if (!this.endless || t.def.kind === 'economy' || t.def.kind === 'support') return false;
+      const b = this.branchDef(t);
+      return b ? t.blevel === b.levels.length - 1 : !t.def.branches && t.level === t.def.levels.length - 1;
+    }
+
+    veteranCost(t) {
+      const levels = t.branch ? this.branchDef(t).levels : t.def.levels;
+      const base = levels[levels.length - 1].cost * TD.VETERAN.cost * Math.pow(TD.VETERAN.growth, t.vet);
+      return this.costOf(base * this.factionCost(t.type));
     }
 
     branchCost(t, key) { return this.costOf(t.def.branches[key].levels[0].cost * this.factionCost(t.type)); }
@@ -566,7 +585,7 @@
     makeTower(type, cx, cy) {
       return {
         id: this.nextId++, type, def: TD.TOWERS[type], level: 0, branch: null, blevel: 0, cx, cy, x: cx + 0.5, y: cy + 0.5,
-        cooldown: 0.3, mode: 'first', invested: 0, recent: 0, recentAt: this.time, builtAt: this.time,
+        cooldown: 0.3, mode: 'first', invested: 0, recent: 0, recentAt: this.time, builtAt: this.time, vet: 0,
         angle: -Math.PI / 2, aimX: cx + 0.5, aimY: cy, fireT: 9, buff: 0, haste: 0, squad: [], rally: null,
         statKey: type, track: true, dmgDealt: 0, kills: 0,
       };
@@ -595,11 +614,13 @@
     upgrade(t) {
       const cost = this.upgradeCost(t);
       if (cost == null || this.state !== 'playing' || !this.spend(cost)) return false;
+      const vet = this.canVeteran(t);
       this.invest(t, cost);
-      if (t.branch) t.blevel++;
+      if (vet) t.vet++;
+      else if (t.branch) t.blevel++;
       else t.level++;
       if (t.def.kind === 'barracks') this.syncSquad(t);
-      this.emit('upgrade', { x: t.x, y: t.y, tower: t.type, id: t.id, level: this.tier(t), branch: t.branch });
+      this.emit('upgrade', { x: t.x, y: t.y, tower: t.type, id: t.id, level: this.tier(t), branch: t.branch, vet: t.vet });
       return true;
     }
 
@@ -1561,7 +1582,7 @@
         abilities: Object.fromEntries(Object.entries(this.abilities).map(([k, v]) => [k, v.cd])),
         seen: [...this.seen],
         towers: this.towers.map((t) => ({
-          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown', 'pulseT', 'fed', 'disabledUntil', 'disabledBy']),
+          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'vet', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown', 'pulseT', 'fed', 'disabledUntil', 'disabledBy']),
           rally: t.rally && { x: t.rally.x, y: t.rally.y },
         })),
         traps: this.traps.map((tr) => ({ ...pick(tr, ['id', 'type', 'cx', 'cy', 'uses', 'dmg', 'hp', 'maxHp']), until: num(tr.until) })),

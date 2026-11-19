@@ -68,7 +68,7 @@
   const view = { placing: null, trap: null, hover: null, hoverTower: null, mouse: null, selected: null, hero: false, ability: null, rallyFor: null, inspect: null };
   const shown = {};
 
-  const fmt = (n) => (n === Infinity ? '∞' : Math.floor(n));
+  const fmt = (n) => (n === Infinity ? '∞' : n >= 1e5 ? big(n) : Math.floor(n));
   const big = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n)));
   const enemySrc = (type) => TD.Render.enemyIcon(type);
 
@@ -231,6 +231,7 @@
             if (ev.wave >= 20) this.unlock('endless20');
             if (ev.wave >= 35) this.unlock('endless35');
             if (ev.wave >= 50) this.unlock('endless50');
+            if (ev.wave >= 100) this.unlock('endless100');
           }
           break;
       }
@@ -1031,7 +1032,7 @@
     }
     else if (t) {
       const branches = game.canBranch(t) ? Object.keys(t.def.branches).map((b) => game.gold >= game.branchCost(t, b)).join() : '';
-      key = ['t', t.id, game.tier(t), t.mode, game.gold >= (game.upgradeCost(t) ?? Infinity), branches, game.state, !!view.rallyFor, game.fullRefund(t), game.sellValue(t)].join();
+      key = ['t', t.id, game.tier(t), t.vet, t.mode, game.gold >= (game.upgradeCost(t) ?? Infinity), branches, game.state, !!view.rallyFor, game.fullRefund(t), game.sellValue(t)].join();
     } else key = 'hint';
     if (key !== infoKey) {
       infoKey = key;
@@ -1110,9 +1111,12 @@
       const tier = game.tier(t);
       const maxTier = def.branches ? 5 : def.levels.length;
       const cost = game.upgradeCost(t);
+      const vet = game.canVeteran(t);
       const s = game.towerStats(t);
       let next = null;
-      if (cost != null) next = t.branch ? game.levelStats(t.type, t.level, t.branch, t.blevel + 1) : game.levelStats(t.type, t.level + 1);
+      if (vet) next = game.levelStats(t.type, t.level, t.branch, t.blevel, t.vet + 1);
+      else if (cost != null) next = t.branch ? game.levelStats(t.type, t.level, t.branch, t.blevel + 1) : game.levelStats(t.type, t.level + 1);
+      const vetGain = Math.round((TD.VETERAN.mult - 1) * 100);
       const attacks = !def.kind || def.kind === 'beam';
       const modes = TD.TARGET_MODES.map((m) => `<button data-mode="${m}" class="${t.mode === m ? 'on' : ''}">${MODE_LABEL[m]}</button>`).join('');
       let branchHtml = '';
@@ -1128,15 +1132,16 @@
       }
       const full = game.fullRefund(t);
       ui.info.innerHTML = `
-        <div class="head"><div><h3>${game.towerName(t)}</h3><div class="stars">${starStr(tier + 1, maxTier)}</div><div class="sub">${t.branch ? def.name + ' · ' : ''}${kindLabel(def)}</div></div></div>
+        <div class="head"><div><h3>${game.towerName(t)}</h3><div class="stars">${starStr(tier + 1, maxTier)}${t.vet ? `<span class="vet">Veteran ${t.vet}</span>` : ''}</div><div class="sub">${t.branch ? def.name + ' · ' : ''}${kindLabel(def)}</div></div></div>
         ${statRows(def, s, next)}
         ${def.kind === 'economy' || def.kind === 'support' ? '' : '<div class="live-stats" data-live="tstats"></div>'}
         ${branchHtml}
+        ${vet ? `<p class="tip">Fully upgraded. <b>Veteran ranks</b> add ${vetGain}% ${def.kind === 'barracks' ? 'damage and soldier health' : 'damage'} each, with no limit.</p>` : ''}
         ${attacks ? `<div class="target-row"><span>Target</span><div class="seg">${modes}</div></div>` : ''}
         ${def.kind === 'barracks' ? `<button class="btn rally-btn ${view.rallyFor ? 'on' : ''}" data-act="rally">${view.rallyFor ? 'Click the road to set the rally point…' : 'Move rally point'}</button>` : ''}
         <div class="actions">
           ${game.canBranch(t) ? '' : `<button class="btn gold" data-act="upgrade" ${cost == null || game.gold < cost ? 'disabled' : ''}>
-            ${cost == null ? 'Max level' : 'Upgrade'}${cost != null ? `<small><span class="coin-i">${fmt(cost)}</span> · U</small>` : ''}
+            ${cost == null ? 'Max level' : vet ? 'Veteran rank' : 'Upgrade'}${cost != null ? `<small><span class="coin-i">${fmt(cost)}</span> · U</small>` : ''}
           </button>`}
           <button class="btn red ${full ? 'refund' : ''}" data-act="sell">${full ? 'Undo' : 'Sell'}<small><span class="coin-i">${game.sellValue(t)}</span>${full ? ' · full refund' : ' · Del'}</small></button>
         </div>`;

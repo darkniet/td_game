@@ -280,6 +280,7 @@ main {
 #info .sub { font-size: 13px; color: var(--ink-soft); font-weight: 700; }
 .stars { color: #d39b25; letter-spacing: 1px; font-size: 15px; }
 .stars .dim { color: #cdb995; }
+.stars .vet { margin-left: 6px; font-size: 12px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #b97a17; }
 #info p { margin: 4px 0 8px; font-size: 14.5px; line-height: 1.3; color: var(--ink-soft); }
 #info .tip { font-size: 13.5px; }
 #info .tip b { color: var(--ink); }

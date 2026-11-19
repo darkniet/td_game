@@ -254,7 +254,7 @@
 
   // ---- Towers ----------------------------------------------------------------
 
-  function pips(ctx, x, y, tier) {
+  function pips(ctx, x, y, tier, vet) {
     for (let i = 0; i <= tier; i++) {
       const px = x + (i - tier / 2) * 8.5;
       const branch = i >= 3;
@@ -266,6 +266,19 @@
       ctx.beginPath();
       ctx.moveTo(px, y - 2.5); ctx.lineTo(px + 2.5, y); ctx.lineTo(px, y + 2.5); ctx.lineTo(px - 2.5, y);
       ctx.closePath(); ctx.fill();
+    }
+    // Veteran ranks read as a gold "+n" after the last pip.
+    if (vet) {
+      const vx = x + (tier / 2) * 8.5 + 6;
+      ctx.font = '800 10px "Alegreya Sans", system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = C.woodDeep;
+      ctx.strokeText('+' + vet, vx, y + 0.5);
+      ctx.fillStyle = C.gold;
+      ctx.fillText('+' + vet, vx, y + 0.5);
+      ctx.textBaseline = 'alphabetic';
     }
   }
 
@@ -1403,7 +1416,7 @@
       const flyers = game.enemies.filter((e) => e.def.fly).sort((a, b) => a.y - b.y);
       for (const e of flyers) this.drawFlyerEnemy(ctx, e, game, time);
 
-      for (const t of game.towers) pips(ctx, t.x * T, (t.cy + 0.86) * T + 5, game.tier(t));
+      for (const t of game.towers) pips(ctx, t.x * T, (t.cy + 0.86) * T + 5, game.tier(t), t.vet);
       if (view.placing && view.hover) this.drawGhost(ctx, game, view, time);
       if (view.trap && view.hover) this.drawTrapGhost(ctx, game, view, time);
       for (const e of game.enemies) {

@@ -404,8 +404,17 @@ TD.endlessWave = function (w, rand) {
 
 TD.eliteChance = (w) => (w < 12 ? 0 : Math.min(0.45, (w - 11) * 0.02));
 
-// Endless foes toughen exponentially on top of the normal curve, so every run ends eventually.
+// Endless foes toughen exponentially on top of the normal curve.
 TD.endlessHpScale = (w) => TD.waveHpScale(w) * (w > 15 ? Math.pow(1.045, w - 15) : 1);
+
+// Endless bounties grow with foe health from wave 20 on, a little slower than health itself:
+// gold keeps buying veteran ranks, but every run still ends at some wall of foes.
+TD.endlessBounty = (w) => (w > 20 ? Math.pow(TD.endlessHpScale(w) / TD.endlessHpScale(20), 0.85) : 1);
+
+// Endless and Sandbox: a fully upgraded combat tower keeps training veteran ranks. Each rank
+// multiplies its damage (and its soldiers' health); the price is a share of its last upgrade
+// and grows with every rank.
+TD.VETERAN = { mult: 1.25, cost: 0.6, growth: 1.3 };
 
 // Player abilities. Damage figures scale with the current wave.
 TD.ABILITIES = {
@@ -539,6 +548,7 @@ TD.ACHIEVEMENTS = [
   { id: 'endless20', name: 'Stubborn', blurb: 'Reach wave 20 in Endless.', glory: 10 },
   { id: 'endless35', name: 'Unbreakable', blurb: 'Reach wave 35 in Endless.', glory: 20 },
   { id: 'endless50', name: 'Living Legend', blurb: 'Reach wave 50 in Endless.', glory: 40 },
+  { id: 'endless100', name: 'Eternal Watch', blurb: 'Reach wave 100 in Endless.', glory: 60 },
   { id: 'kills1k', name: 'Slayer', blurb: 'Defeat 1,000 foes in total.', glory: 10 },
   { id: 'kills10k', name: 'Scourge of the Horde', blurb: 'Defeat 10,000 foes in total.', glory: 30 },
   { id: 'boss_warlord', name: 'Kingslayer', blurb: 'Defeat the Warlord.', glory: 5 },
