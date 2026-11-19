@@ -248,6 +248,15 @@ TD.TOWERS = {
       { cost: 170, dps: 55, range: 3.2, ramp: 3 },
     ],
   },
+  mirror: {
+    name: 'Sun Mirror', key: '9', cost: 130, faction: 'nomads', kind: 'ray', damage: 'magic',
+    blurb: 'A great bronze mirror that focuses the sun into a searing ray, burning every foe in a line. Hits flyers.',
+    levels: [
+      { range: 3.0, interval: 3.2, dmg: 34, burn: 10, burnDur: 3, width: 0.38 },
+      { cost: 110, range: 3.2, interval: 3.0, dmg: 56, burn: 18, burnDur: 3, width: 0.42 },
+      { cost: 170, range: 3.5, interval: 2.8, dmg: 90, burn: 30, burnDur: 3.5, width: 0.46 },
+    ],
+  },
 };
 TD.TOWER_ORDER = ['archer', 'catapult', 'wizard', 'ballista', 'barracks', 'alchemist', 'chapel', 'windmill'];
 TD.TARGET_MODES = ['first', 'last', 'strong', 'close'];
@@ -521,8 +530,14 @@ TD.FACTIONS = {
     mods: { wizard: { dmg: 1.25, range: 1.07 }, alchemist: { dmg: 1.2 }, archer: { dmg: 0.9 }, catapult: { dmg: 0.9 } },
     cooldown: 0.8, power: 1.2,
   },
+  nomads: {
+    name: 'Dunesworn Nomads', short: 'Nomads', tint: 'sand', color: '#c8643c', hero: 'seren', unique: 'mirror', icon: 'sun',
+    blurb: 'Desert caravans who travel light, trade hard and fight with fire and sunlight.',
+    perks: ['Selling refunds 90% instead of 70%', '+25% gold from wave clears and windmills', 'All fire burns 25% hotter; alchemists +20% damage', 'Start with 2 fewer lives', 'Faction tower: Sun Mirror'],
+    mods: { alchemist: { dmg: 1.2 } }, sell: 0.9, tithe: 1.25, fire: 1.25, lives: -2,
+  },
 };
-TD.FACTION_ORDER = ['kingdom', 'sylvan', 'ironhold', 'conclave'];
+TD.FACTION_ORDER = ['kingdom', 'sylvan', 'ironhold', 'conclave', 'nomads'];
 
 // Heroes fight on their own, grow stronger as foes fall near them and respawn at the keep.
 // Total experience needed to leave each level (index = current level).

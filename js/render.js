@@ -6,7 +6,7 @@
   const W = TD.COLS * T, H = TD.ROWS * T;
   const EXTRA_SPRITES = ['keep_blue', 'dome_arcane', 'dome_frost', 'dome_storm', 'hall_blue', 'house_b_blue',
     'church_gold', 'hut_top_gold', 'roof_green', 'roof_blue'].map((n) => 'structures/' + n).concat(['units/hero']);
-  const TINTS = ['teal', 'gold', 'violet'];
+  const TINTS = ['teal', 'gold', 'violet', 'sand'];
   for (const tint of TINTS) {
     for (const st of ['keep', 'hall', 'house_b']) EXTRA_SPRITES.push(`structures/${st}_${tint}`);
     for (const u of ['soldier', 'knight', 'king', 'peasant', 'woman', 'mage']) EXTRA_SPRITES.push(`units/${tint}_${u}`);
@@ -688,6 +688,44 @@
     }
   }
 
+  // Sun Mirror: a sandstone pillar carrying a bronze mirror that turns toward its target.
+  function drawMirror(ctx, t, x, y, time) {
+    const tier = tierOf(t);
+    shadow(ctx, x, y - 1, 20, 6);
+    const stone = '#e3c48f', stoneDark = '#b8925a', edge = '#7d5a2e';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = edge;
+    ctx.fillStyle = stoneDark;
+    roundRect(ctx, x - 17, y - 12, 34, 12, 3); ctx.fill(); ctx.stroke();
+    const top = y - 46 - tier * 5;
+    ctx.fillStyle = stone;
+    ctx.beginPath(); ctx.moveTo(x - 12, y - 12); ctx.lineTo(x - 9, top); ctx.lineTo(x + 9, top); ctx.lineTo(x + 12, y - 12); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(125,90,46,0.55)';
+    ctx.lineWidth = 1.2;
+    for (let k = 1; k <= 2 + tier; k++) {
+      const yy = y - 12 - k * ((y - 12 - top) / (3 + tier));
+      ctx.beginPath(); ctx.moveTo(x - 11, yy); ctx.lineTo(x + 11, yy); ctx.stroke();
+    }
+    ctx.fillStyle = FT.color;
+    ctx.fillRect(x - 10, top + 4, 20, 4);
+    // Yoke and mirror. The disc narrows as it turns away, and flashes when it fires.
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x - 13, top - 18); ctx.lineTo(x - 13, top); ctx.lineTo(x + 13, top); ctx.lineTo(x + 13, top - 18); ctx.stroke();
+    const face = Math.max(0.35, Math.abs(Math.cos(t.angle || 0)));
+    const mx = x, my = top - 16, r = 13 + tier;
+    const flash = t.fireT < 0.3 ? 1 - t.fireT / 0.3 : 0;
+    glow(ctx, mx, my, r + 10 + flash * 26, `rgba(255,220,120,${0.25 + flash * 0.6})`, 'rgba(255,200,80,0)');
+    const g = ctx.createLinearGradient(mx - r, my - r, mx + r, my + r);
+    g.addColorStop(0, '#fff2c4'); g.addColorStop(0.45, '#e8b04a'); g.addColorStop(1, '#a8651e');
+    ctx.fillStyle = g;
+    ctx.strokeStyle = '#6e4524';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(mx, my, r * face, r, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,240,${0.55 + Math.sin(time * 2 + t.id) * 0.25})`;
+    ctx.beginPath(); ctx.ellipse(mx - r * face * 0.35, my - r * 0.35, r * face * 0.22, r * 0.18, -0.6, 0, Math.PI * 2); ctx.fill();
+  }
+
   function drawObelisk(ctx, t, x, y, time) {
     const tier = tierOf(t);
     const pulse = 0.5 + Math.sin(time * 3 + t.id) * 0.3;
@@ -721,7 +759,7 @@
   const DRAWERS = {
     archer: drawArcher, wizard: drawWizard, catapult: drawCatapult, ballista: drawBallista,
     barracks: drawBarracks, alchemist: drawAlchemist, chapel: drawChapel, windmill: drawWindmill,
-    belltower: drawBellTower, grove: drawGrove, cannon: drawCannon, obelisk: drawObelisk,
+    belltower: drawBellTower, grove: drawGrove, cannon: drawCannon, obelisk: drawObelisk, mirror: drawMirror,
   };
 
   function drawTower(ctx, t, x, y, time) {
@@ -738,7 +776,7 @@
     const ctx = c.getContext('2d');
     const box = type === 'archer' ? (tier === 0 ? 76 : tier === 1 ? 104 : 122)
       : type === 'chapel' ? 100 : type === 'windmill' ? 92 : branch === 'trebuchet' ? 92 : type === 'wizard' ? 86
-        : type === 'belltower' ? 110 : type === 'obelisk' ? 96 : type === 'grove' ? 86 : 76;
+        : type === 'belltower' ? 110 : type === 'obelisk' ? 96 : type === 'mirror' ? 100 : type === 'grove' ? 86 : 76;
     const k = (size / box) * dpr;
     ctx.scale(k, k);
     const def = TD.TOWERS[type];
@@ -1026,6 +1064,16 @@
           ctx.globalAlpha = (1 - k) * 0.8;
           ctx.strokeStyle = p.color; ctx.lineWidth = 3 * (1 - k) + 1;
           ctx.beginPath(); ctx.ellipse(p.x, p.y, p.r * (0.3 + k * 0.7), p.r * (0.3 + k * 0.7) * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+        } else if (p.kind === 'ray') {
+          ctx.globalAlpha = 1 - k;
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = 'rgba(255,170,60,0.55)'; ctx.lineWidth = 18 * (1 - k * 0.5);
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x2, p.y2); ctx.stroke();
+          ctx.strokeStyle = 'rgba(255,235,160,0.95)'; ctx.lineWidth = 7 * (1 - k * 0.6);
+          ctx.stroke();
+          ctx.strokeStyle = '#fffbe8'; ctx.lineWidth = 2.5;
+          ctx.stroke();
+          ctx.lineCap = 'butt';
         } else if (p.kind === 'bolt') {
           ctx.globalAlpha = 1 - k;
           ctx.strokeStyle = p.color || '#d9b8ff'; ctx.lineWidth = 3;
@@ -1310,6 +1358,10 @@
           fx.ring(px, py, 70, 'rgba(255,170,70,0.95)', 0.5);
           fx.puff(px, py, 20, 'rgba(255,130,40,0.95)', 110, 5, -60);
           fx.text(px, py - 40, 'Ignite!', '#ffb070');
+          break;
+        case 'ray':
+          fx.add({ kind: 'ray', x: px, y: py, x2: ev.x2 * T, y2: ev.y2 * T, life: 0, max: 0.4 });
+          fx.puff(ev.x2 * T, ev.y2 * T, 6, 'rgba(255,200,90,0.9)', 50, 3);
           break;
         case 'bell':
           fx.ring(px, py, ev.radius * T * 1.6, 'rgba(255,215,110,0.95)', 0.6);

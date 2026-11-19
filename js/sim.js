@@ -213,12 +213,12 @@
         cooldown: (1 - 0.1 * pk('rites')) * (this.faction.cooldown || 1), power: (1 + 0.15 * pk('lore')) * (this.faction.power || 1),
         range: 1 + 0.04 * pk('fletching'), heroXp: 1 + 0.2 * pk('heroism'), heroHp: 1 + 0.1 * pk('heroism'),
         trapCost: (1 - 0.1 * pk('trapmaster')) * (this.faction.trapCost || 1), trapPower: 1 + 0.15 * pk('trapmaster'),
-        tithe: 1 + 0.1 * pk('tithe'), gate: 0.1 * pk('gate'), heroSpeed: 1 + 0.1 * pk('boots'), respawn: 1 - 0.15 * pk('boots'),
+        tithe: (1 + 0.1 * pk('tithe')) * (this.faction.tithe || 1), gate: 0.1 * pk('gate'), heroSpeed: 1 + 0.1 * pk('boots'), respawn: 1 - 0.15 * pk('boots'),
       };
       this.statCache = new Map();
       this.level = TD.buildLevel(map);
       this.gold = this.sandbox ? Infinity : map.gold + this.mods.gold;
-      this.lives = this.sandbox ? Infinity : map.lives + this.mods.lives;
+      this.lives = this.sandbox ? Infinity : map.lives + this.mods.lives + (this.faction.lives || 0);
       this.maxLives = this.lives;
       this.wave = 0;
       this.totalWaves = this.endless ? Infinity : TD.WAVES.length;
@@ -499,7 +499,7 @@
 
     burn(e, dps, dur, src) {
       if (!e.alive) return;
-      dps *= TD.WEATHER[this.weather].burn || 1;
+      dps *= (TD.WEATHER[this.weather].burn || 1) * (this.faction.fire || 1);
       if (e.burnUntil <= this.time || dps >= e.burnDps) {
         e.burnDps = dps;
         e.burnSrc = src || null;
@@ -539,7 +539,7 @@
         s = Object.assign({}, branch ? def.branches[branch].levels[blevel || 0] : def.levels[level]);
         const fm = this.faction.mods || {};
         const m = Object.assign({}, fm.all, fm[type]);
-        for (const k of ['dmg', 'dps', 'rate', 'hp']) if (s[k] != null && m[k]) s[k] *= m[k];
+        for (const k of ['dmg', 'dps', 'rate', 'hp', 'burn']) if (s[k] != null && m[k]) s[k] *= m[k];
         if (s.range != null) s.range *= (m.range || 1) * this.mods.range;
         if (s.armor != null && m.armor) s.armor = Math.min(0.85, s.armor + m.armor);
         if (s.slow != null && m.slow) s.slow = Math.min(0.85, s.slow + m.slow);
@@ -601,8 +601,8 @@
 
     sellValue(t) {
       if (this.sandbox) return 0;
-      const older = t.invested - t.recent;
-      return Math.floor(older * 0.7) + (this.fullRefund(t) ? t.recent : Math.floor(t.recent * 0.7));
+      const older = t.invested - t.recent, rate = this.faction.sell || 0.7;
+      return Math.floor(older * rate) + (this.fullRefund(t) ? t.recent : Math.floor(t.recent * rate));
     }
 
     invest(t, cost) {
@@ -1517,6 +1517,31 @@
           }
           continue;
         }
+        if (t.def.kind === 'ray') {
+          // The Sun Mirror burns every foe along a line through its target.
+          t.rayT = (t.rayT || 0) + dt * pace;
+          if (t.rayT >= s.interval) {
+            const target = this.pickTargets(t, range, 1)[0];
+            if (target) {
+              const ox = t.x, oy = t.y - 0.6, ang = Math.atan2(this.aimY(target) - oy, target.x - ox);
+              const dx = Math.cos(ang), dy = Math.sin(ang), len = range + 0.4;
+              for (const e of this.enemies) {
+                if (!e.alive) continue;
+                const ex = e.x - ox, ey = this.aimY(e) - oy, along = ex * dx + ey * dy;
+                if (along < 0 || along > len || Math.abs(ex * dy - ey * dx) > s.width) continue;
+                this.damage(e, s.dmg * power, 'magic', 0, 0, t);
+                this.burn(e, s.burn * power, s.burnDur, t);
+              }
+              t.rayT = 0;
+              t.fireT = 0;
+              t.angle = ang;
+              this.emit('ray', { x: ox, y: oy, x2: ox + dx * len, y2: oy + dy * len, id: t.id });
+            } else {
+              t.rayT = s.interval;
+            }
+          }
+          continue;
+        }
         if (t.def.kind === 'aura') {
           const hit = this.targetsInRange(t, range);
           t.active = hit.length > 0;
@@ -1720,7 +1745,7 @@
         abilities: Object.fromEntries(Object.entries(this.abilities).map(([k, v]) => [k, v.cd])),
         seen: [...this.seen],
         towers: this.towers.map((t) => ({
-          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'vet', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown', 'pulseT', 'fed', 'disabledUntil', 'disabledBy']),
+          ...pick(t, ['id', 'type', 'cx', 'cy', 'level', 'branch', 'blevel', 'vet', 'mode', 'invested', 'recent', 'recentAt', 'builtAt', 'angle', 'dmgDealt', 'kills', 'cooldown', 'pulseT', 'rayT', 'fed', 'disabledUntil', 'disabledBy']),
           rally: t.rally && { x: t.rally.x, y: t.rally.y },
         })),
         traps: this.traps.map((tr) => ({ ...pick(tr, ['id', 'type', 'cx', 'cy', 'uses', 'dmg', 'hp', 'maxHp']), until: num(tr.until) })),

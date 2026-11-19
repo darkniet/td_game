@@ -17,11 +17,12 @@ python3 -m http.server 8000   # then open http://localhost:8000
   - **Endless**: procedurally generated waves that never stop, with elite foes from wave 12 and a boss every 10 waves. Bounties grow with the wave, and fully upgraded towers keep training **veteran ranks** (+25% damage each, no limit), so a full map is never a dead end. Your best wave is saved per map.
   - **Sandbox**: endless waves with unlimited gold and lives.
 - **7 maps**: Greenvale Road, Twin Fords, Dunewatch, Ashen Hollow, Frostmarch Pass, Kingsbridge and Blackwood (three entrances).
-- **4 playable factions**, each with its own colours, stat bonuses and drawbacks, and a unique faction tower:
+- **5 playable factions**, each with its own colours, stat bonuses and drawbacks, and a unique faction tower:
   - **Kingdom of Aldmere**: tougher soldiers, extra militia; *Bell Tower* stuns everything around it.
   - **Sylvan Wardens**: long-range archers, stronger slows; *Thorn Grove* lashes and slows all nearby foes.
   - **Ironhold Clans**: heavy siege and armor, cheap traps, pricier towers; *Cannon Tower* blasts through armor.
   - **Arcane Conclave**: stronger magic and abilities; *Mana Obelisk* fires a beam that heats up on one target.
+  - **Dunesworn Nomads**: 90% sell refunds, richer wave clears and hotter fire, but fewer lives; *Sun Mirror* burns every foe along a searing ray.
 - **8 shared towers**: Archer, Catapult, Wizard, Ballista, Barracks (soldiers block the road), Alchemist (burn + armor corrosion), Chapel (buffs nearby towers) and Windmill (gold each wave).
 - **16 specializations**: at level 3, eight towers pick one of two branches, each with 2 more ranks: Ranger Lodge / Marksman Spire, Bombard / Trebuchet, Frost Spire / Storm Tower, Scorpion Nest / Dragonslayer, Paladin Order / Berserker Hall, Plague Doctor / Pyromancer, Cathedral / Oracle's Sanctum, Royal Bank / Granary.
 - **6 heroes** you send anywhere on the map, each levelling up to 10 with two skills: Sir Aldric (knight), Lyra Swiftbow (ranged archer), Thane Borin (dwarf tank), Archmage Vael (ranged mage), Sister Seren (ranged healer who lifts hexes and blesses towers) and Brannoc Gearwright (engineer who sets up crossbow turrets).

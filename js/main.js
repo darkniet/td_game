@@ -17,6 +17,7 @@
   const CREST_ICONS = {
     crown: '<path class="sym" d="M7 15l-1-6 3.2 2.6L12 7l2.8 4.6L18 9l-1 6z"/>',
     leaf: '<path class="sym" d="M7 16c0-5 3.5-8.5 10-9 0 6.5-3.5 10-9 10M8 16l5-5"/>',
+    sun: '<circle class="sym" cx="12" cy="11.5" r="3.2"/><path class="sym-ray" d="M12 5.2v2M12 15.8v2M5.7 11.5h2M16.3 11.5h2M7.6 7.1l1.4 1.4M15 14.5l1.4 1.4M7.6 15.9l1.4-1.4M15 8.5l1.4-1.4"/>',
     hammer: '<path class="sym" d="M7 7h8v4H7zM10 11h2v7h-2z"/>',
     star: '<path class="sym" d="M12 6l1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z"/>',
   };
@@ -993,7 +994,7 @@
     ['rate', (t) => (t.kind === 'barracks' ? 'Soldier attacks / sec' : 'Attacks / sec'), (v) => v.toFixed(2)],
     ['dps', () => 'Damage / sec', (v) => Math.round(v)],
     ['ramp', () => 'Heats up to', (v) => '×' + v],
-    ['interval', () => 'Tolls every', (v) => v + 's'],
+    ['interval', (t) => (t.kind === 'ray' ? 'Fires every' : 'Tolls every'), (v) => v + 's'],
     ['range', () => 'Range', (v) => v.toFixed(1)],
     ['soldiers', () => 'Soldiers'],
     ['hp', () => 'Soldier health'],
@@ -1054,7 +1055,7 @@
     bombard: (a) => `Every ${a.interval}s, lobs a boulder at your most valuable tower in range, burying towers around it for ${a.duration}s and battering soldiers.`,
   };
 
-  const KIND_LABEL = { support: 'support', economy: 'economy', barracks: 'melee', pulse: 'stunning toll', aura: 'thorn aura', beam: 'magic beam' };
+  const KIND_LABEL = { support: 'support', economy: 'economy', barracks: 'melee', pulse: 'stunning toll', aura: 'thorn aura', beam: 'magic beam', ray: 'searing ray' };
   const kindLabel = (def) => (KIND_LABEL[def.kind] || def.damage + ' damage') + (def.faction ? ' · faction tower' : '') + (def.ground ? ' · ground only' : '');
 
   let infoKey = '';
@@ -1159,7 +1160,7 @@
       if (vet) next = game.levelStats(t.type, t.level, t.branch, t.blevel, t.vet + 1);
       else if (cost != null) next = t.branch ? game.levelStats(t.type, t.level, t.branch, t.blevel + 1) : game.levelStats(t.type, t.level + 1);
       const vetGain = Math.round((TD.VETERAN.mult - 1) * 100);
-      const attacks = !def.kind || def.kind === 'beam';
+      const attacks = !def.kind || def.kind === 'beam' || def.kind === 'ray';
       const modes = TD.TARGET_MODES.map((m) => `<button data-mode="${m}" class="${t.mode === m ? 'on' : ''}">${MODE_LABEL[m]}</button>`).join('');
       let branchHtml = '';
       if (game.canBranch(t)) {
@@ -1425,6 +1426,7 @@
           TD.Audio.play({ whirlwind: 'whirlwind', rally: 'heal', slam: 'keg', ironskin: 'upgrade', volley: 'arrow', snare: 'chain', nova: 'freeze', storm: 'lightning', mend: 'heal', sanctify: 'freeze', turret: 'build', charge: 'keg' }[ev.skill]);
           break;
         case 'bell': TD.Audio.play('bell'); break;
+        case 'ray': TD.Audio.play('lightning'); break;
         case 'lifeRestored':
           TD.Audio.play('heal');
           toast('The granary feeds the garrison: <b>+1 life</b>.', 'gold', 1800);
@@ -1815,7 +1817,7 @@
     else if (k === 'n') callWave();
     else if (k === 'a') toggleAuto();
     else if (k === 'f') setSpeed(TD.SPEEDS[(TD.SPEEDS.indexOf(speed) + 1) % TD.SPEEDS.length]);
-    else if (k === 't' && view.selected && !view.selected.def.kind) {
+    else if (k === 't' && view.selected && [undefined, 'beam', 'ray'].includes(view.selected.def.kind)) {
       const m = TD.TARGET_MODES;
       view.selected.mode = m[(m.indexOf(view.selected.mode) + 1) % m.length];
       refreshAll();
