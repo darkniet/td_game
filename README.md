@@ -29,6 +29,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 - **4 abilities**: Meteor Strike, Call to Arms, Winter's Grasp, War Horn.
 - **4 road traps**: Spike Trap, Tar Pit, Powder Keg and Barricade.
 - **19 enemy types**, including healers, summoners, flyers (bats, wyverns) that cross the map along dashed flight lanes, and six bosses with signature moves: the Warlord's War Cry hastens his troops, the Iron King's stomps stun your soldiers, the Witch Queen and Red Dragon hex or scorch towers so they stop firing, the Lich raises foes that fall near him as Revenants, and the Siege Juggernaut bombards your most valuable towers with boulders. The Lich and the Juggernaut lead Endless waves 50 and 60.
+- **Weather**: rain halves fire and strengthens lightning, fog shortens tower range, and at night towers only see far enough to hit burning foes and bosses. Endless rolls the weather in three-wave spells from wave 6 (shown in the next-wave panel); each campaign map has a few scripted spells.
 - **Combos**: heavy hits *shatter* frozen foes for 50% extra damage, and burning foes *ignite* tar pits into fire fields.
 - **Click any foe** to inspect its health, armor, speed, traits and current status effects. Tower panels show estimated damage per second.
 - **Royal Armory**: 14 permanent perks bought with Glory, which you earn in every game.

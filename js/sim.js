@@ -244,6 +244,7 @@
       this.rand = mulberry32(this.seed);
       this.waveRand = mulberry32(this.seed ^ 0x5bd1e995);
       this.waveCache = {};
+      this.weather = 'clear';
       this.abilities = {};
       for (const id of TD.ABILITY_ORDER) this.abilities[id] = { cd: 0 };
       this.abilitySrc = { statKey: 'abilities' };
@@ -282,6 +283,12 @@
       return this.waveCache[w];
     }
 
+    weatherFor(w) {
+      if (this.endless) return TD.endlessWeather(this.seed, w);
+      const spell = (this.map.skies || []).find(([a, b]) => w >= a && w <= b);
+      return spell ? spell[2] : 'clear';
+    }
+
     nextWaveGroups() {
       return this.wave < this.totalWaves ? this.wavesFor(this.wave + 1) : null;
     }
@@ -306,6 +313,11 @@
       }
       this.wave++;
       this.countdown = null;
+      const weather = this.weatherFor(this.wave);
+      if (weather !== this.weather) {
+        this.weather = weather;
+        this.emit('weather', { weather });
+      }
       const queue = [];
       for (const [type, count, gap, delay] of this.wavesFor(this.wave)) {
         for (let k = 0; k < count; k++) queue.push({ time: delay + k * gap, type });
@@ -487,6 +499,7 @@
 
     burn(e, dps, dur, src) {
       if (!e.alive) return;
+      dps *= TD.WEATHER[this.weather].burn || 1;
       if (e.burnUntil <= this.time || dps >= e.burnDps) {
         e.burnDps = dps;
         e.burnSrc = src || null;
@@ -542,7 +555,10 @@
     towerStats(t) { return this.levelStats(t.type, t.level, t.branch, t.blevel, t.vet); }
 
     // Range including an Oracle's blessing.
-    rangeOf(t) { return (this.towerStats(t).range || 0) * (1 + (t.reach || 0)); }
+    rangeOf(t) { return (this.towerStats(t).range || 0) * (1 + (t.reach || 0)) * (TD.WEATHER[this.weather].sight || 1); }
+
+    // At night only burning foes and bosses can be seen at full range.
+    lit(e) { return e.burnUntil > this.time || !!e.def.boss; }
 
     // 0-2 are the base levels, 3-4 the branch ranks.
     tier(t) { return t.branch ? 3 + t.blevel : t.level; }
@@ -1159,8 +1175,8 @@
     // ---- Targeting & firing -------------------------------------------------------
 
     targetsInRange(t, range) {
-      const r2 = range * range;
-      return this.enemies.filter((e) => e.alive && this.canHit(t, e) && (e.x - t.x) ** 2 + (e.y - t.y) ** 2 <= r2);
+      const r2 = range * range, dark = TD.WEATHER[this.weather].dark, d2 = dark ? r2 * dark * dark : r2;
+      return this.enemies.filter((e) => e.alive && this.canHit(t, e) && (e.x - t.x) ** 2 + (e.y - t.y) ** 2 <= (this.lit(e) ? r2 : d2));
     }
 
     // "First" means closest to the gate, measured as distance left to walk.
@@ -1243,7 +1259,7 @@
     lightning(t, s, first, o, dmg) {
       const pts = [[o.x, o.y]];
       const hit = [];
-      let cur = first, power = dmg;
+      let cur = first, power = dmg * (TD.WEATHER[this.weather].lightning || 1);
       for (let c = 0; c <= s.chain && cur; c++) {
         hit.push(cur);
         pts.push([cur.x, this.aimY(cur)]);
@@ -1734,6 +1750,7 @@
         hornUntil: data.hornUntil, castCount: data.castCount || 0, stats: data.stats, damageBy: data.damageBy || {},
         pending: data.pending, spawners: data.spawners, seen: new Set(data.seen), cheated: !!data.cheated,
       });
+      g.weather = g.wave ? g.weatherFor(g.wave) : 'clear';
       for (const id in data.abilities) if (g.abilities[id]) g.abilities[id].cd = data.abilities[id];
       const towers = new Map();
       g.towers = data.towers.map((d) => {

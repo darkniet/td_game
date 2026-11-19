@@ -417,6 +417,25 @@ TD.endlessWave = function (w, rand) {
   return groups;
 };
 
+// Weather changes how towers see and how fire and lightning behave.
+TD.WEATHER = {
+  clear: { name: 'Clear skies', blurb: 'The skies clear.' },
+  rain: { name: 'Rain', burn: 0.5, lightning: 1.3, blurb: 'Fire burns at half strength. Lightning hits 30% harder.' },
+  fog: { name: 'Fog', sight: 0.8, blurb: 'Towers see 20% less far.' },
+  night: { name: 'Night', dark: 0.75, blurb: 'Towers see 25% less far, except burning foes and bosses. Set them alight!' },
+};
+
+// Endless weather comes in spells of three waves from wave 6, decided by the run's seed alone
+// so it never disturbs wave generation.
+TD.endlessWeather = function (seed, w) {
+  if (w < 6) return 'clear';
+  let x = (seed ^ Math.imul(Math.floor((w - 6) / 3) + 1, 0x9e3779b1)) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x85ebca6b);
+  x = Math.imul(x ^ (x >>> 13), 0xc2b2ae35);
+  const r = ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+  return r < 0.5 ? 'clear' : r < 0.67 ? 'rain' : r < 0.84 ? 'fog' : 'night';
+};
+
 TD.eliteChance = (w) => (w < 12 ? 0 : Math.min(0.45, (w - 11) * 0.02));
 
 // Endless foes toughen exponentially on top of the normal curve.
@@ -647,9 +666,11 @@ TD.MODES = {
 
 // Paths are waypoints in cell coordinates; every leg must be straight. All paths of a map
 // end on the same cell heading north, so the horde marches up into the castle gate.
+// skies lists campaign weather spells as [first wave, last wave, kind].
 TD.MAPS = [
   {
     id: 'greenvale', name: 'Greenvale Road', difficulty: 'Squire',
+    skies: [[8, 9, 'rain']],
     blurb: 'A long road winding through farmland. A fine place to learn the trade.',
     ground: 'grass', hpMul: 1.1, gold: 260, lives: 20, seed: 11, density: 0.36,
     paths: [[[-1, 3], [3, 3], [3, 9], [8, 9], [8, 4], [12, 4], [12, 10], [16, 10], [16, 5]]],
@@ -658,6 +679,7 @@ TD.MAPS = [
   },
   {
     id: 'twinfords', name: 'Twin Fords', difficulty: 'Squire',
+    skies: [[6, 7, 'rain'], [13, 14, 'fog']],
     blurb: 'Two roads from the west meet before the gate. Watch both flanks.',
     ground: 'grass', hpMul: 1.0, gold: 280, lives: 20, seed: 31, density: 0.34,
     paths: [
@@ -669,6 +691,7 @@ TD.MAPS = [
   },
   {
     id: 'dunewatch', name: 'Dunewatch', difficulty: 'Knight',
+    skies: [[15, 17, 'night']],
     blurb: 'Sun-baked switchbacks with little room to spare. The horde hits harder here.',
     ground: 'sand', hpMul: 1.5, gold: 240, lives: 15, seed: 4, density: 0.3,
     paths: [[[2, -1], [2, 7], [6, 7], [6, 3], [10, 3], [10, 10], [15, 10], [15, 5]]],
@@ -677,6 +700,7 @@ TD.MAPS = [
   },
   {
     id: 'ashenhollow', name: 'Ashen Hollow', difficulty: 'Knight',
+    skies: [[9, 11, 'fog'], [18, 19, 'night']],
     blurb: 'Scorched earth where roads from north and south converge on a short final stretch.',
     ground: 'dirt', hpMul: 1.25, gold: 280, lives: 15, seed: 57, density: 0.3,
     paths: [
@@ -688,6 +712,7 @@ TD.MAPS = [
   },
   {
     id: 'frostmarch', name: 'Frostmarch Pass', difficulty: 'Warlord',
+    skies: [[11, 13, 'fog']],
     blurb: 'A short, frozen pass. Every arrow counts and the keep can take few blows.',
     ground: 'snow', hpMul: 1.2, gold: 230, lives: 10, seed: 23, density: 0.36,
     paths: [[[-1, 6], [5, 6], [5, 2], [11, 2], [11, 9], [17, 9], [17, 5]]],
@@ -696,6 +721,7 @@ TD.MAPS = [
   },
   {
     id: 'kingsbridge', name: 'Kingsbridge', difficulty: 'Knight',
+    skies: [[4, 5, 'rain'], [16, 17, 'night']],
     blurb: 'Grey stone streets snaking through the old city. The longest road in the realm.',
     ground: 'stone', hpMul: 1.3, gold: 260, lives: 15, seed: 77, density: 0.24,
     paths: [[[-1, 2], [3, 2], [3, 9], [7, 9], [7, 4], [11, 4], [11, 10], [15, 10], [15, 7], [18, 7], [18, 3]]],
@@ -704,6 +730,7 @@ TD.MAPS = [
   },
   {
     id: 'blackwood', name: 'Blackwood', difficulty: 'Warlord',
+    skies: [[12, 13, 'fog'], [17, 20, 'night']],
     blurb: 'Three roads cut through a dark forest and meet beneath the keep.',
     ground: 'grass', hpMul: 1.0, gold: 340, lives: 20, seed: 91, density: 0.45, weather: 'leaves',
     paths: [

@@ -1300,6 +1300,8 @@
     }).join('');
     const elite = game.endless ? TD.eliteChance(game.wave + 1) : 0;
     if (elite) html += `<div class="muted elite-note">${Math.round(elite * 100)}% chance each foe is an elite</div>`;
+    const sky = game.weatherFor(game.wave + 1);
+    if (sky !== 'clear') html += `<div class="weather-note"><b>${TD.WEATHER[sky].name}</b> ${TD.WEATHER[sky].blurb}</div>`;
     ui.next.innerHTML = html;
   }
 
@@ -1400,6 +1402,11 @@
           break;
         case 'heal': TD.Audio.play('heal'); break;
         case 'summon': TD.Audio.play('summon'); break;
+        case 'weather': {
+          const w = TD.WEATHER[ev.weather];
+          toast(`<span><b>${w.name}.</b> ${w.blurb}</span>`, ev.weather === 'clear' ? '' : 'bad', 4500);
+          break;
+        }
         case 'raise': TD.Audio.play('summon'); break;
         case 'shellHit': TD.Audio.play('stoneHit'); break;
         case 'leak': TD.Audio.play('leak'); break;

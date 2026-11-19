@@ -902,6 +902,8 @@ main {
 .crest-svg path.sym[d^="M7 16"] { fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; }
 .hero-pick img { height: 30px; }
 .pick-info { margin-top: 7px; font-size: 13px; line-height: 1.35; color: var(--ink-soft); }
+.weather-note { margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(40,60,90,0.12); font-size: 12.5px; line-height: 1.3; color: var(--ink-soft); }
+.weather-note b { color: var(--ink); margin-right: 3px; }
 .gear-row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 9px; }
 .gear-label { font-family: var(--display); font-size: 17px; color: var(--wood); margin-right: 3px; }
 .gear-pick {

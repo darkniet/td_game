@@ -1474,7 +1474,11 @@
       const sel = view.selected;
       if (sel) {
         const s = game.towerStats(sel);
-        if (s.range) this.drawRange(ctx, sel.x * T, sel.y * T, game.rangeOf(sel), 'rgba(255,255,255,0.13)', 'rgba(255,255,255,0.7)');
+        if (s.range) {
+          this.drawRange(ctx, sel.x * T, sel.y * T, game.rangeOf(sel), 'rgba(255,255,255,0.13)', 'rgba(255,255,255,0.7)');
+          const dark = TD.WEATHER[game.weather].dark;
+          if (dark) this.drawRange(ctx, sel.x * T, sel.y * T, game.rangeOf(sel) * dark, 'rgba(0,0,0,0)', 'rgba(255,214,120,0.75)');
+        }
         if (sel.rally) this.drawRallyFlag(ctx, sel.rally.x * T, sel.rally.y * T, time);
       }
       const hov = view.hoverTower;
@@ -1541,6 +1545,7 @@
       // Flyers soar above everything on the ground.
       const flyers = game.enemies.filter((e) => e.def.fly).sort((a, b) => a.y - b.y);
       for (const e of flyers) this.drawFlyerEnemy(ctx, e, game, time);
+      this.drawWeather(ctx, game, dt, time);
 
       for (const t of game.towers) pips(ctx, t.x * T, (t.cy + 0.86) * T + 5, game.tier(t), t.vet);
       if (view.placing && view.hover) this.drawGhost(ctx, game, view, time);
@@ -1564,6 +1569,85 @@
       this.fx.draw(ctx);
       this.drawTargeting(ctx, game, view, time);
       this.drawAmbience(ctx, game, dt, time);
+      this.drawRain(ctx, time);
+    }
+
+    // Weather fades in and out over a couple of seconds. Fog and night sit under health bars;
+    // rain falls over everything.
+    drawWeather(ctx, game, dt, time) {
+      const w = this.wx || (this.wx = { rain: 0, fog: 0, night: 0 });
+      for (const k in w) w[k] += ((game.weather === k ? 1 : 0) - w[k]) * Math.min(1, dt * 0.7);
+      if (w.rain > 0.01) {
+        ctx.fillStyle = `rgba(40,60,90,${0.2 * w.rain})`;
+        ctx.fillRect(0, 0, W, H);
+      }
+      if (w.fog > 0.01) {
+        ctx.fillStyle = `rgba(222,230,235,${0.2 * w.fog})`;
+        ctx.fillRect(0, 0, W, H);
+        for (let i = 0; i < 7; i++) {
+          const fx = ((time * (10 + i * 2) + i * 233) % (W + 500)) - 250, fy = 60 + ((i * 173) % (H - 120));
+          glow(ctx, fx, fy, 230, `rgba(236,241,244,${0.4 * w.fog})`, 'rgba(236,241,244,0)');
+        }
+      }
+      if (w.night > 0.01) this.drawNight(ctx, game, w.night, time);
+    }
+
+    // Night: a dark layer with holes cut around every source of light.
+    drawNight(ctx, game, k, time) {
+      const c = this.nightCanvas || (this.nightCanvas = document.createElement('canvas'));
+      const q = 0.5;
+      if (c.width !== W * q) { c.width = W * q; c.height = H * q; }
+      const n = c.getContext('2d');
+      n.globalCompositeOperation = 'source-over';
+      n.clearRect(0, 0, c.width, c.height);
+      n.fillStyle = `rgba(8,12,34,${0.6 * k})`;
+      n.fillRect(0, 0, c.width, c.height);
+      n.globalCompositeOperation = 'destination-out';
+      const light = (x, y, r, a) => {
+        const g = n.createRadialGradient(x * q, y * q, 0, x * q, y * q, r * q);
+        g.addColorStop(0, `rgba(0,0,0,${a})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        n.fillStyle = g;
+        n.beginPath(); n.arc(x * q, y * q, r * q, 0, Math.PI * 2); n.fill();
+      };
+      const flicker = 1 + Math.sin(time * 9) * 0.04;
+      const castle = game.level.castle;
+      light(castle.x * T, castle.y * T - 20, 170 * flicker, 0.95);
+      for (const t of game.towers) light(t.x * T, t.y * T - 18, 72 * flicker, 0.85);
+      for (const s of game.soldiers) if (s.alive && (s.hero || s.turret)) light(s.x * T, s.y * T - 16, 56, 0.7);
+      for (const e of game.enemies) {
+        if (e.burnUntil > game.time) light(e.x * T, e.y * T - 14, 58 * flicker, 0.9);
+        else if (e.def.boss) light(e.x * T, e.y * T - 20, 50, 0.6);
+      }
+      for (const p of game.projectiles) light(p.x * T, p.y * T, 34, 0.75);
+      for (const h of game.hazards) light(h.x * T, h.y * T, h.r * T * 1.6, 0.85);
+      for (const s of game.strikes) light(s.x * T, s.y * T, 90, 1 - s.t / s.t0);
+      ctx.drawImage(c, 0, 0, W, H);
+      // Warm torchlight beside every tower.
+      for (const t of game.towers) {
+        const tx = t.x * T + 15, ty = t.y * T + 4;
+        glow(ctx, tx, ty - 8, 16 * flicker, `rgba(255,190,90,${0.45 * k})`, 'rgba(255,190,90,0)');
+        ctx.fillStyle = `rgba(255,${200 + Math.sin(time * 14 + t.id) * 30 | 0},110,${0.9 * k})`;
+        ctx.beginPath(); ctx.ellipse(tx, ty - 9, 2, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    drawRain(ctx, time) {
+      const a = this.wx ? this.wx.rain : 0;
+      if (a < 0.02) return;
+      if (!this.drops) this.drops = Array.from({ length: 420 }, () => [Math.random(), Math.random(), 0.8 + Math.random() * 0.4]);
+      const count = Math.round(this.drops.length * a * Math.min(1, PARTICLES[opt().particles] || 1));
+      ctx.strokeStyle = `rgba(215,228,245,${0.6 * a})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < count; i++) {
+        const [u, v, sp] = this.drops[i];
+        const y = ((v * (H + 80) + time * 820 * sp) % (H + 80)) - 40;
+        const x = ((u * (W + 120) - (y + 40) * 0.3) % (W + 120) + W + 120) % (W + 120) - 60;
+        ctx.moveTo(x, y); ctx.lineTo(x - 7, y + 22);
+      }
+      ctx.stroke();
+      if (Math.random() < 0.5 * a) this.fx.ring(Math.random() * W, Math.random() * H, 6, 'rgba(210,225,245,0.6)', 0.35);
     }
 
     // Scorch marks, fire fields and shadows under flying boulders.
