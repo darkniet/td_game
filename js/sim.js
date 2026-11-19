@@ -227,6 +227,7 @@
       this.projectiles = [];
       this.hazards = [];
       this.strikes = [];
+      this.shells = [];
       this.spawners = [];
       this.pending = {};
       this.countdown = null;
@@ -455,6 +456,15 @@
         x: e.x, y: e.y, gold, enemy: e.type, boss: !!e.def.boss, elite: e.elite, fly: !!e.def.fly,
         source: src ? src.statKey : null, cast: src ? src.cast : null, scale: e.scale, flip: e.dirX < -0.1,
       });
+      // A Lich raises ground foes that fall near him. The risen can't be raised again.
+      if (!e.def.minion && !e.def.boss && !e.def.fly) {
+        const lich = this.enemies.find((o) => o.alive && o.def.raise && dist2(o, e) <= o.def.raise.radius ** 2);
+        if (lich) {
+          this.spawn(lich.def.raise.type, e.wave, e);
+          this.pending[e.wave]++;
+          this.emit('raise', { x: e.x, y: e.y, fromX: lich.x, fromY: lich.y });
+        }
+      }
     }
 
     applySlow(e, amount, dur) {
@@ -1317,6 +1327,17 @@
           this.hitSoldier(s, a.dmg * k);
           hits.push({ x: s.x, y: s.y });
         }
+      } else if (a.type === 'bombard') {
+        // Lob a boulder at the most valuable working tower in range; it lands a moment later.
+        const t = this.towers.filter((o) => !(o.disabledUntil > this.time) && dist2(o, e) <= a.range * a.range)
+          .sort((p, q) => q.invested - p.invested)[0];
+        if (t) {
+          this.shells.push({
+            x: t.x, y: t.y, fromX: e.x, fromY: e.y, t: 1.4, t0: 1.4, r: a.radius, duration: a.duration,
+            dmg: a.dmg * Math.sqrt(TD.waveHpScale(e.wave)),
+          });
+          hits.push({ x: t.x, y: t.y });
+        }
       } else {
         // Hex and Scorch silence the nearest working towers.
         const towers = this.towers.filter((t) => !(t.disabledUntil > this.time) && (t.x - e.x) ** 2 + (t.y - e.y) ** 2 <= a.range * a.range)
@@ -1552,6 +1573,21 @@
         this.emit('meteor', { x: s.x, y: s.y, radius: s.r });
       }
       this.strikes = this.strikes.filter((s) => s.t > 0);
+      // Juggernaut boulders bury nearby towers in rubble and batter soldiers.
+      for (const s of this.shells) {
+        s.t -= dt;
+        if (s.t > 0) continue;
+        for (const t of this.towers) {
+          if ((t.x - s.x) ** 2 + (t.y - s.y) ** 2 > s.r * s.r) continue;
+          t.disabledUntil = Math.max(t.disabledUntil || 0, this.time + s.duration);
+          t.disabledBy = 'rubble';
+        }
+        for (const sol of this.soldiers) {
+          if (sol.alive && (sol.x - s.x) ** 2 + (sol.y - s.y) ** 2 <= s.r * s.r) this.hitSoldier(sol, s.dmg);
+        }
+        this.emit('shellHit', { x: s.x, y: s.y, radius: s.r });
+      }
+      this.shells = this.shells.filter((s) => s.t > 0);
       for (const h of this.hazards) {
         for (const e of this.enemies) {
           if (!e.alive || e.def.fly || (e.x - h.x) ** 2 + (e.y - h.y) ** 2 > h.r * h.r) continue;

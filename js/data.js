@@ -327,6 +327,20 @@ TD.ENEMIES = {
     boss: true, ability: { type: 'scorch', name: 'Scorching Roar', interval: 10, range: 3.0, count: 2, duration: 3.5 },
     blurb: 'Soars straight for the keep, scorching towers below so they stop firing. Only ranged towers can reach it.',
   },
+  lich: {
+    name: 'Lich', sprite: 'grey_mage', hp: 3200, speed: 0.45, armor: 0.1, magicResist: 0.55, gold: 280, lives: 10, scale: 1.1, atk: 35,
+    boss: true, raise: { type: 'revenant', radius: 2.4 },
+    blurb: 'Every foe that falls near him rises again as a Revenant. Kill him first, or fight his escort far from him.',
+  },
+  revenant: {
+    name: 'Revenant', sprite: 'grey_soldier', hp: 70, speed: 0.85, armor: 0.25, gold: 2, lives: 1, scale: 0.62, atk: 7, minion: true, risen: true,
+    blurb: 'A fallen foe raised by the Lich. It cannot be raised again.',
+  },
+  juggernaut: {
+    name: 'Siege Juggernaut', machine: 'siege', hp: 5200, speed: 0.3, armor: 0.55, magicResist: 0.1, gold: 320, lives: 10, scale: 1.4, atk: 70,
+    boss: true, ability: { type: 'bombard', name: 'Bombard', interval: 7, range: 4.2, radius: 1.15, duration: 3.5, dmg: 70 },
+    blurb: 'A rolling war machine that lobs boulders at your most valuable towers, burying them in rubble. Magic cracks its plating.',
+  },
 };
 
 // Elite foes appear in endless mode with one extra trait.
@@ -371,7 +385,8 @@ const ENDLESS_POOL = [
   ['peasant', 1, 1], ['footman', 2, 2], ['outrider', 4, 1.5], ['knight', 5, 5], ['bat', 5, 3], ['berserker', 7, 3],
   ['priest', 8, 3], ['shieldbearer', 9, 3.2], ['ironclad', 13, 10], ['wyvern', 14, 14], ['necromancer', 15, 7],
 ];
-const ENDLESS_BOSSES = ['warlord', 'witchqueen', 'ironking', 'dragon'];
+// One boss every ten waves, in this order, then the cycle repeats with more of them.
+const ENDLESS_BOSSES = ['warlord', 'witchqueen', 'ironking', 'dragon', 'lich', 'juggernaut'];
 
 TD.endlessWave = function (w, rand) {
   const boss = w % 10 === 0;
@@ -555,6 +570,8 @@ TD.ACHIEVEMENTS = [
   { id: 'boss_witchqueen', name: 'Witch Hunter', blurb: 'Defeat the Witch Queen.', glory: 10 },
   { id: 'boss_ironking', name: 'Rust to Rust', blurb: 'Defeat the Iron King.', glory: 10 },
   { id: 'boss_dragon', name: 'Dragonbane', blurb: 'Defeat the Red Dragon.', glory: 15 },
+  { id: 'boss_lich', name: 'Laid to Rest', blurb: 'Defeat the Lich.', glory: 20 },
+  { id: 'boss_juggernaut', name: 'Siege Breaker', blurb: 'Defeat the Siege Juggernaut.', glory: 20 },
   { id: 'skyguard', name: 'Skyguard', blurb: 'Bring down 100 flying foes in total.', glory: 10 },
   { id: 'trapper', name: 'Trapper', blurb: 'Defeat 100 foes with traps in total.', glory: 10 },
   { id: 'meteor10', name: 'Extinction Event', blurb: 'Defeat 10 foes with a single Meteor Strike.', glory: 15 },

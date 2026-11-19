@@ -444,7 +444,7 @@
         if (!codex.seen.has(type)) {
           return `<div class="entry locked"><span class="e-pic">?</span><span class="e-text"><b>Unknown foe</b><small>Not yet encountered. Keep fighting to learn more.</small></span></div>`;
         }
-        const tags = [d.boss && 'Boss', d.fly && 'Flying', d.noBlock && 'Unblockable', d.heal && 'Heals allies', d.summon && 'Summons', d.rage && 'Enrages', d.minion && 'Summoned']
+        const tags = [d.boss && 'Boss', d.fly && 'Flying', d.noBlock && 'Unblockable', d.heal && 'Heals allies', d.summon && 'Summons', d.raise && 'Raises the fallen', d.rage && 'Enrages', d.minion && 'Summoned']
           .filter(Boolean).map((t) => `<span class="tag">${t}</span>`).join('');
         return `<div class="entry"><span class="e-pic"><img src="${enemySrc(type)}" alt=""></span><span class="e-text">
           <b>${d.name}</b>${tags ? `<span class="e-tags">${tags}</span>` : ''}<small>${d.blurb}</small>
@@ -1013,6 +1013,7 @@
     quake: (a) => `Every ${a.interval}s, stuns and batters soldiers and heroes around it for ${a.stun}s.`,
     hex: (a) => `Every ${a.interval}s, hexes the nearest tower so it can't act for ${a.duration}s.`,
     scorch: (a) => `Every ${a.interval}s, scorches up to ${a.count} towers below so they stop for ${a.duration}s.`,
+    bombard: (a) => `Every ${a.interval}s, lobs a boulder at your most valuable tower in range, burying towers around it for ${a.duration}s and battering soldiers.`,
   };
 
   const KIND_LABEL = { support: 'support', economy: 'economy', barracks: 'melee', pulse: 'stunning toll', aura: 'thorn aura', beam: 'magic beam' };
@@ -1068,6 +1069,7 @@
       const traits = [];
       if (d.heal) traits.push(['Heals allies', `Restores ${pct(d.heal.amount)} health to nearby foes every ${d.heal.interval}s.`]);
       if (d.summon) traits.push(['Summoner', `Raises ${d.summon.count} thralls every ${d.summon.interval}s.`]);
+      if (d.raise) traits.push(['Raise Dead', `Ground foes that fall within ${d.raise.radius} tiles rise again as Revenants.`]);
       if (d.rage) traits.push(['Enrages', 'Runs 80% faster below half health.']);
       if (d.ability) traits.push([d.ability.name, ABILITY_TEXT[d.ability.type](d.ability)]);
       if (e.regen) traits.push(['Regenerates', `${pct(e.regen)} of its health per second while not being hit.`]);
@@ -1358,6 +1360,8 @@
           break;
         case 'heal': TD.Audio.play('heal'); break;
         case 'summon': TD.Audio.play('summon'); break;
+        case 'raise': TD.Audio.play('summon'); break;
+        case 'shellHit': TD.Audio.play('stoneHit'); break;
         case 'leak': TD.Audio.play('leak'); break;
         case 'build': TD.Audio.play('build'); break;
         case 'trap': TD.Audio.play('build'); break;
@@ -1380,7 +1384,7 @@
           break;
         case 'gateHeld': TD.Audio.play('barricade'); break;
         case 'bossAbility': {
-          TD.Audio.play({ warcry: 'wave', quake: 'keg', hex: 'summon', scorch: 'firepot' }[ev.ability]);
+          TD.Audio.play({ warcry: 'wave', quake: 'keg', hex: 'summon', scorch: 'firepot', bombard: 'stoneLaunch' }[ev.ability]);
           if (!shown['ability:' + ev.ability]) {
             shown['ability:' + ev.ability] = true;
             const d = TD.ENEMIES[ev.enemy];

@@ -830,16 +830,91 @@
     ctx.restore();
   }
 
-  // Icon for menus and panels: a PNG path for ground units, a data URL for drawn flyers.
+  // ---- War machines ------------------------------------------------------------
+  // The Siege Juggernaut, drawn in code: a plated wagon with a throwing arm, anchored at its
+  // bottom centre. `rolled` turns the wheels; `fired` is seconds since the arm last swung.
+  function drawSiege(ctx, x, y, scale, rolled, fired, flip) {
+    const iron = '#4b5155', ironLight = '#8d9599', hull = '#4a3424', beam = '#5e4129';
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(flip ? -scale : scale, scale);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = C.woodDeep;
+    // Banner pole at the back.
+    ctx.fillStyle = C.woodDark;
+    ctx.fillRect(-25, -54, 3, 40);
+    const wave = Math.sin(rolled * 3) * 2;
+    ctx.fillStyle = C.red;
+    ctx.beginPath(); ctx.moveTo(-22, -54); ctx.lineTo(-8, -50 + wave); ctx.lineTo(-22, -45); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // A-frame that carries the arm.
+    ctx.fillStyle = beam;
+    for (const fx of [-10, 6]) {
+      ctx.beginPath(); ctx.moveTo(fx - 3, -15); ctx.lineTo(-1, -40); ctx.lineTo(2, -40); ctx.lineTo(fx + 3, -15); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    // Throwing arm: cocked back at rest, whipped forward just after a shot.
+    const swing = fired < 0.25 ? fired / 0.25 : fired < 2 ? 1 - (fired - 0.25) / 1.75 : 0;
+    const ang = -2.5 + swing * 2.1;
+    const ax = Math.cos(ang) * 30, ay = -38 + Math.sin(ang) * 30;
+    ctx.strokeStyle = C.woodDeep;
+    ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(-Math.cos(ang) * 8, -38 - Math.sin(ang) * 8); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.strokeStyle = C.wood;
+    ctx.lineWidth = 3.4;
+    ctx.stroke();
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = C.woodDeep;
+    if (fired > 1.2) {
+      ctx.fillStyle = '#7d7468';
+      ctx.beginPath(); ctx.arc(ax, ay - 2, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    ctx.fillStyle = iron;
+    ctx.beginPath(); ctx.arc(0, -38, 3.2, 0, Math.PI * 2); ctx.fill();
+    // Blackened chassis with iron bands and a red war stripe.
+    ctx.fillStyle = hull;
+    roundRect(ctx, -28, -19, 54, 12, 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = C.red;
+    ctx.fillRect(-27, -15, 52, 3);
+    ctx.fillStyle = iron;
+    for (const bx of [-18, 0, 16]) ctx.fillRect(bx, -19, 3, 12);
+    // Spiked, sloped iron mantlet on the front.
+    ctx.fillStyle = ironLight;
+    for (const sy of [-11, -19, -27]) {
+      ctx.beginPath(); ctx.moveTo(29, sy - 2.5); ctx.lineTo(36, sy); ctx.lineTo(29, sy + 2.5); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = iron;
+    ctx.beginPath(); ctx.moveTo(18, -7); ctx.lineTo(31, -7); ctx.lineTo(27, -35); ctx.lineTo(19, -32); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = ironLight;
+    for (const ry of [-13, -21]) { ctx.beginPath(); ctx.arc(25, ry, 1.4, 0, Math.PI * 2); ctx.fill(); }
+    // Wheels roll with the distance travelled.
+    for (const wx of [-17, 15]) {
+      ctx.fillStyle = C.woodDark;
+      ctx.beginPath(); ctx.arc(wx, -6, 7.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = C.wood;
+      ctx.lineWidth = 1.4;
+      for (let k = 0; k < 3; k++) {
+        const a = rolled * 4 + (k * Math.PI) / 3;
+        ctx.beginPath(); ctx.moveTo(wx - Math.cos(a) * 6, -6 - Math.sin(a) * 6); ctx.lineTo(wx + Math.cos(a) * 6, -6 + Math.sin(a) * 6); ctx.stroke();
+      }
+      ctx.strokeStyle = C.woodDeep;
+      ctx.lineWidth = 1.6;
+      ctx.fillStyle = iron;
+      ctx.beginPath(); ctx.arc(wx, -6, 2, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Icon for menus and panels: a PNG path for ground units, a data URL for drawn foes.
   const iconCache = {};
   function enemyIcon(type) {
     const def = TD.ENEMIES[type];
-    if (!def.draw) return 'assets/units/' + def.sprite + '.png';
+    if (!def.draw && !def.machine) return 'assets/units/' + def.sprite + '.png';
     if (!iconCache[type]) {
       const c = document.createElement('canvas');
       c.width = c.height = 64;
       const ctx = c.getContext('2d');
-      drawFlyer(ctx, def.draw, 32, 36, 1.15, 0.35);
+      if (def.machine) drawSiege(ctx, 32, 56, 0.95, 0, 9, false);
+      else drawFlyer(ctx, def.draw, 32, 36, 1.15, 0.35);
       iconCache[type] = c.toDataURL();
     }
     return iconCache[type];
@@ -1074,6 +1149,14 @@
       switch (ev.type) {
         case 'kill': {
           const def = TD.ENEMIES[ev.enemy];
+          if (def.machine) {
+            // War machines break apart instead of leaving a body.
+            fx.puff(px, py - 20, 30, 'rgba(120,95,70,0.9)', 150, 7);
+            fx.puff(px, py - 10, 16, 'rgba(90,98,102,0.9)', 110, 4);
+            fx.text(px, py - 40, '+' + ev.gold, '#ffd166', true);
+            fx.shake = 1;
+            break;
+          }
           fx.add({
             kind: 'corpse', x: px, y: py, life: 0, max: ev.boss ? 1.6 : 0.9, scale: ev.scale, flip: ev.flip,
             sprite: def.draw ? null : 'units/' + def.sprite, flyer: def.draw || null,
@@ -1139,6 +1222,16 @@
           fx.ring(px, py, 50, 'rgba(170,120,255,0.9)', 0.5);
           fx.puff(px, py - 10, 14, 'rgba(120,200,120,0.85)', 70, 4);
           break;
+        case 'raise':
+          fx.bolt(jagged([[ev.fromX * T, ev.fromY * T - 40], [px, py - 12]], 10), 'rgba(150,255,190,0.85)', 0.35);
+          fx.puff(px, py - 8, 10, 'rgba(150,255,190,0.8)', 50, 4);
+          break;
+        case 'shellHit':
+          fx.ring(px, py, ev.radius * T * 1.2, 'rgba(200,160,110,0.9)', 0.45);
+          fx.puff(px, py - 10, 22, 'rgba(150,120,90,0.9)', 130, 6);
+          fx.puff(px, py - 20, 8, 'rgba(110,110,110,0.9)', 90, 4);
+          fx.shake = Math.max(fx.shake, 0.6);
+          break;
         case 'leak':
           this.castleFlash = 1;
           fx.text(castle.x * T, castle.y * T - 70, '-' + ev.lives, '#ff6b5b', ev.lives > 2);
@@ -1183,7 +1276,10 @@
         case 'bossAbility': {
           const colors = { warcry: 'rgba(255,90,60,0.95)', quake: 'rgba(170,130,90,0.95)', hex: 'rgba(170,90,230,0.95)', scorch: 'rgba(255,140,50,0.95)' };
           const col = colors[ev.ability];
-          if (ev.ability === 'warcry' || ev.ability === 'quake') {
+          if (ev.ability === 'bombard') {
+            fx.puff(px, py - 40, 10, 'rgba(200,170,130,0.85)', 70, 4);
+            fx.text(px, py - 70, 'Bombard!', '#e0c090', true);
+          } else if (ev.ability === 'warcry' || ev.ability === 'quake') {
             fx.ring(px, py, ev.radius * T * 1.6, col, 0.6);
             fx.ring(px, py, ev.radius * T * 1.0, col, 0.45);
             fx.text(px, py - 70, ev.ability === 'warcry' ? 'War Cry!' : 'Earthshaker!', ev.ability === 'warcry' ? '#ff8d6b' : '#e0c090', true);
@@ -1434,6 +1530,7 @@
       for (const p of game.projectiles) this.drawProjectile(ctx, p, dt);
       for (const t of game.towers) if (t.beam && t.beam.alive) this.drawBeam(ctx, game, t, time);
       this.drawStrikes(ctx, game, time);
+      this.drawShells(ctx, game);
       this.fx.draw(ctx);
       this.drawTargeting(ctx, game, view, time);
       this.drawAmbience(ctx, game, dt, time);
@@ -1529,6 +1626,17 @@
             ctx.beginPath(); ctx.ellipse(x - 24 * d + 12 * d * k, y - 64 + 14.5 * k, 3.5, 2.2, d * 0.9, 0, Math.PI * 2); ctx.stroke();
           }
         }
+      } else if (t.disabledBy === 'rubble') {
+        // Buried under boulders and dust.
+        ctx.fillStyle = 'rgba(60,50,40,0.3)';
+        ctx.beginPath(); ctx.ellipse(x, y - 20, 26, 26, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = C.woodDeep;
+        ctx.lineWidth = 1.5;
+        for (const [rx, ry, rr] of [[-12, -4, 8], [8, -2, 9], [-2, -14, 7], [14, -16, 6], [-16, -20, 5]]) {
+          ctx.fillStyle = rr > 7 ? '#8a8076' : '#a39a8e';
+          ctx.beginPath(); ctx.arc(x + rx, y + ry, rr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+        if (Math.random() < 0.25) this.fx.add({ kind: 'dot', x: x + (Math.random() - 0.5) * 34, y: y - 10, vx: 0, vy: -18, life: 0, max: 0.9, size: 5, color: 'rgba(170,150,120,0.45)', drag: 0.5 });
       } else {
         ctx.fillStyle = 'rgba(30,20,15,0.35)';
         ctx.beginPath(); ctx.ellipse(x, y - 24, 26, 30, 0, 0, Math.PI * 2); ctx.fill();
@@ -1719,6 +1827,25 @@
       }
     }
 
+    // Juggernaut boulders arc from the machine to their target, which is marked on the ground.
+    drawShells(ctx, game) {
+      for (const s of game.shells) {
+        const k = 1 - s.t / s.t0;
+        const x = s.x * T, y = s.y * T;
+        ctx.strokeStyle = `rgba(220,90,60,${0.35 + k * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.ellipse(x, y, s.r * T, s.r * T * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        const bx = (s.fromX + (s.x - s.fromX) * k) * T;
+        const by = (s.fromY + (s.y - s.fromY) * k) * T - 40 * (1 - k) - Math.sin(k * Math.PI) * 150;
+        ctx.fillStyle = '#7d7468';
+        ctx.strokeStyle = C.woodDeep;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(bx, by, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+    }
+
     drawStrikes(ctx, game, time) {
       for (const s of game.strikes) {
         const x = s.x * T, y = s.y * T;
@@ -1827,7 +1954,39 @@
       ctx.globalAlpha = 1;
     }
 
+    drawMachine(ctx, e, game, time) {
+      const x = e.x * T, y = e.y * T, now = game.time;
+      const remaining = e.path.length - e.dist;
+      ctx.globalAlpha = remaining < 0.7 ? Math.max(0, remaining / 0.7) : 1;
+      shadow(ctx, x, y, 30 * e.scale, 8 * e.scale, 0.3);
+      ctx.fillStyle = 'rgba(255,90,60,0.18)';
+      ctx.beginPath(); ctx.ellipse(x, y, 32, 10, 0, 0, Math.PI * 2); ctx.fill();
+      const a = e.def.ability;
+      const fired = a ? Math.max(0, a.interval - e.abilityT) : 9;
+      drawSiege(ctx, x, y, e.scale, e.dist, fired, e.dirX < -0.1);
+      if (e.flash > 0) glow(ctx, x, y - 24, 34, `rgba(255,255,255,${Math.min(1, e.flash / 0.09) * 0.35})`, 'rgba(255,255,255,0)');
+      const top = y - e.scale * 56;
+      if (e.stunUntil > now) {
+        for (let i = 0; i < 3; i++) {
+          const ang = time * 6 + i * 2.1;
+          ctx.fillStyle = '#ffe066';
+          ctx.beginPath(); ctx.arc(x + Math.cos(ang) * 14, top + Math.sin(ang) * 4, 2.6, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      ctx.globalAlpha = 1;
+      if (e.burnUntil > now && Math.random() < 0.45) {
+        this.fx.add({ kind: 'dot', x: x + (Math.random() - 0.5) * 40, y: y - Math.random() * 40, vx: 0, vy: -40, life: 0, max: 0.4, size: 3 + Math.random() * 2, color: Math.random() < 0.5 ? 'rgba(255,170,60,0.9)' : 'rgba(255,90,30,0.9)', drag: 1 });
+      }
+      if (e.slowUntil > now && Math.random() < 0.1) {
+        this.fx.add({ kind: 'dot', x: x + (Math.random() - 0.5) * 40, y: y - Math.random() * 40, vx: 0, vy: 12, life: 0, max: 0.5, size: 1.8, color: '#d8f1ff', drag: 0 });
+      }
+    }
+
     drawEnemy(ctx, e, game, time) {
+      if (e.def.machine) {
+        this.drawMachine(ctx, e, game, time);
+        return;
+      }
       const def = e.def, x = e.x * T, y = e.y * T;
       const name = 'units/' + def.sprite;
       const s = e.scale;
@@ -1846,6 +2005,16 @@
       if (def.boss) {
         ctx.fillStyle = 'rgba(255,90,60,0.18)';
         ctx.beginPath(); ctx.ellipse(x, y, 22, 8, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      if (def.raise) {
+        // The Lich's reach: foes that fall inside this ring rise again.
+        const r = def.raise.radius * T;
+        ctx.strokeStyle = `rgba(140,255,180,${0.3 + Math.sin(time * 3) * 0.1})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath(); ctx.ellipse(x, y, r, r * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        glow(ctx, x, y - 30, 50, 'rgba(140,255,180,0.4)', 'rgba(140,255,180,0)');
       }
       if (e.hasteUntil > now) {
         ctx.strokeStyle = 'rgba(255,90,60,0.7)';
@@ -1875,6 +2044,7 @@
         sprite(ctx, null, 0, 0, s, flip, tinted(name, color));
         ctx.globalAlpha = base;
       };
+      if (def.raise || def.risen) overlay('#a8ffd0', def.risen ? 0.45 : 0.4);
       if (frozen) overlay('#bfeaff', 0.6);
       else if (slowed) overlay('#7fc8ff', 0.4);
       if (burning) overlay('#ff8a3d', 0.28 + Math.sin(time * 18) * 0.08);
