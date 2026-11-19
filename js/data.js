@@ -548,8 +548,27 @@ TD.HEROES = {
       storm: { name: 'Chain Lightning', level: 3, cooldown: 11, chain: 5, mult: 1.6, blurb: 'Lightning arcs between up to six foes.' },
     },
   },
+  seren: {
+    name: 'Sister Seren', title: 'High Priestess', sprite: 'hero_seren', scale: 0.74,
+    blurb: 'A healer who mends soldiers, breaks hexes and blesses towers. Weak alone, strong behind a line.',
+    hp: 240, hpPerLevel: 33, dmg: 11, dmgPerLevel: 3, rate: 1.1, armor: 0.1, speed: 2.5, regen: 12, respawn: 12,
+    ranged: { range: 2.7, projectile: 'holy', damage: 'magic' },
+    skills: {
+      mend: { name: 'Mending Light', level: 1, cooldown: 6, radius: 2.2, heal: 0.3, blurb: 'Heals every soldier around her, herself included, for 30% of their health.' },
+      sanctify: { name: 'Sanctify', level: 3, cooldown: 12, radius: 2.8, buff: 0.3, duration: 6, blurb: 'Lifts hexes, scorch and rubble from nearby towers, frees stunned soldiers, and blesses towers with 30% more damage.' },
+    },
+  },
+  brannoc: {
+    name: 'Brannoc Gearwright', title: 'Royal Engineer', sprite: 'hero_brannoc', scale: 0.72,
+    blurb: 'A tinkerer who holds the road and sets up crossbow turrets wherever he stands.',
+    hp: 360, hpPerLevel: 48, dmg: 14, dmgPerLevel: 3.5, rate: 1.1, armor: 0.3, speed: 2.1, regen: 10, respawn: 15,
+    skills: {
+      turret: { name: 'Crossbow Turret', level: 1, cooldown: 11, duration: 16, max: 2, range: 2.6, rate: 1.4, mult: 0.8, blurb: 'Sets up a turret beside him that shoots foes, flyers included, for 16 seconds. Up to two at once.' },
+      charge: { name: 'Blasting Charge', level: 3, cooldown: 13, range: 2.6, radius: 1.0, mult: 3, stun: 0.8, blurb: 'Hurls a powder charge into the thickest crowd in range, stunning everything it hits.' },
+    },
+  },
 };
-TD.HERO_ORDER = ['aldric', 'lyra', 'borin', 'vael'];
+TD.HERO_ORDER = ['aldric', 'lyra', 'borin', 'vael', 'seren', 'brannoc'];
 
 TD.SPEEDS = [1, 2, 3, 5];
 

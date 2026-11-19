@@ -1339,7 +1339,7 @@
 
   // ---- Simulation events ---------------------------------------------------------------
 
-  const FIRE_SOUND = { arrow: 'arrow', stone: 'stoneLaunch', firepot: 'stoneLaunch', flask: 'flaskThrow', orb: 'orb', ice: 'orb', bolt: 'bolt' };
+  const FIRE_SOUND = { arrow: 'arrow', stone: 'stoneLaunch', firepot: 'stoneLaunch', flask: 'flaskThrow', orb: 'orb', ice: 'orb', holy: 'orb', bolt: 'bolt' };
   const CAST_SOUND = { meteor: 'meteorFall', reinforce: 'reinforce', frost: 'freeze', horn: 'hornCall' };
 
   function processEvents() {
@@ -1375,7 +1375,7 @@
         case 'sell': TD.Audio.play('sell'); break;
         case 'income': TD.Audio.play('coin'); break;
         case 'heroSkill':
-          TD.Audio.play({ whirlwind: 'whirlwind', rally: 'heal', slam: 'keg', ironskin: 'upgrade', volley: 'arrow', snare: 'chain', nova: 'freeze', storm: 'lightning' }[ev.skill]);
+          TD.Audio.play({ whirlwind: 'whirlwind', rally: 'heal', slam: 'keg', ironskin: 'upgrade', volley: 'arrow', snare: 'chain', nova: 'freeze', storm: 'lightning', mend: 'heal', sanctify: 'freeze', turret: 'build', charge: 'keg' }[ev.skill]);
           break;
         case 'bell': TD.Audio.play('bell'); break;
         case 'lifeRestored':

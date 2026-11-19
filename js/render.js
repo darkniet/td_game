@@ -11,7 +11,7 @@
     for (const st of ['keep', 'hall', 'house_b']) EXTRA_SPRITES.push(`structures/${st}_${tint}`);
     for (const u of ['soldier', 'knight', 'king', 'peasant', 'woman', 'mage']) EXTRA_SPRITES.push(`units/${tint}_${u}`);
   }
-  EXTRA_SPRITES.push('units/hero_lyra', 'units/hero_borin', 'units/hero_vael');
+  EXTRA_SPRITES.push('units/hero_lyra', 'units/hero_borin', 'units/hero_vael', 'units/hero_seren', 'units/hero_brannoc');
   const ROAD_TILES = {
     5: 'road_ns', 10: 'road_ew', 3: 'road_ne', 9: 'road_nw', 6: 'road_es', 12: 'road_ws',
     14: 'road_wes', 11: 'road_wen', 13: 'road_nsw', 7: 'road_nse', 15: 'road_x',
@@ -1190,6 +1190,7 @@
           break;
         case 'hit':
           if (ev.kind === 'orb') fx.puff(px, py, 7, 'rgba(180,150,255,0.95)', 70, 3);
+          else if (ev.kind === 'holy') fx.puff(px, py, 6, 'rgba(255,225,140,0.95)', 60, 3);
           else if (ev.kind === 'ice') fx.puff(px, py, 8, 'rgba(210,245,255,0.95)', 70, 3);
           else if (ev.kind === 'bolt') fx.puff(px, py, 4, 'rgba(255,240,200,0.9)', 80, 2.5);
           else fx.puff(px, py, 2, 'rgba(255,255,255,0.8)', 40, 2);
@@ -1418,6 +1419,32 @@
           fx.text(tx, ty - 40, 'Snared!', '#9be07d');
           break;
         }
+        case 'mend':
+          fx.ring(px, py, r * 1.4, 'rgba(255,225,140,0.9)', 0.6);
+          for (let i = 0; i < 10; i++) {
+            fx.add({ kind: 'text', x: px + (Math.random() - 0.5) * 70, y: py - 20 - Math.random() * 20, vx: 0, vy: -35, life: 0, max: 0.8, str: '+', color: '#ffe08a', drag: 1 });
+          }
+          break;
+        case 'sanctify':
+          fx.ring(px, py, r * 1.6, 'rgba(255,225,140,0.95)', 0.6);
+          for (const t of ev.targets) {
+            fx.bolt([[px, py - 40], [t.x * T, t.y * T - 40]], 'rgba(255,235,170,0.8)', 0.4);
+            fx.puff(t.x * T, t.y * T - 30, 8, 'rgba(255,230,150,0.9)', 50, 3);
+          }
+          fx.text(px, py - 60, 'Sanctify!', '#ffe08a', true);
+          break;
+        case 'turret':
+          fx.puff(px, py, 10, 'rgba(201,160,110,0.85)', 60, 4);
+          break;
+        case 'charge': {
+          const tx = ev.tx * T, ty = ev.ty * T;
+          fx.bolt([[px, py - 30], [(px + tx) / 2, Math.min(py, ty) - 70], [tx, ty]], 'rgba(255,200,120,0.6)', 0.25);
+          fx.ring(tx, ty, r * 1.6, 'rgba(255,160,70,0.95)', 0.45);
+          fx.puff(tx, ty, 22, 'rgba(255,150,60,0.9)', 140, 5);
+          fx.puff(tx, ty, 10, 'rgba(90,90,90,0.9)', 110, 4);
+          fx.shake = Math.max(fx.shake, 0.6);
+          break;
+        }
         case 'nova':
           fx.ring(px, py, r * 1.8, 'rgba(200,150,255,0.95)', 0.5);
           fx.ring(px, py, r * 1.2, 'rgba(255,255,255,0.9)', 0.35);
@@ -1491,6 +1518,9 @@
             ctx.beginPath(); ctx.ellipse(bx, by - 2, 28, 10, 0, 0, Math.PI * 2); ctx.stroke();
           }
           if (t.buff > 0) glow(ctx, bx, by - 2, 30, 'rgba(255,220,120,0.35)', 'rgba(255,220,120,0)');
+          if (t.blessUntil > game.time && Math.random() < 0.12) {
+            this.fx.add({ kind: 'dot', x: bx + (Math.random() - 0.5) * 36, y: by - Math.random() * 50, vx: 0, vy: -25, life: 0, max: 0.7, size: 2.2, color: 'rgba(255,230,150,0.95)', drag: 0 });
+          }
           if (horn && t.def.kind !== 'economy' && t.def.kind !== 'support') {
             ctx.strokeStyle = `rgba(255,170,70,${0.5 + Math.sin(time * 10) * 0.3})`;
             ctx.lineWidth = 2.5;
@@ -1922,6 +1952,11 @@
       } else if (s.sprite === 'hero_vael') {
         const p = 0.6 + Math.sin(time * 5) * 0.3;
         glow(ctx, x + dir * 8, y - 40 * s.scale - 4, 9, `rgba(230,180,255,${p})`, 'rgba(160,80,255,0)');
+      } else if (s.sprite === 'hero_seren') {
+        const p = 0.65 + Math.sin(time * 3) * 0.2;
+        ctx.strokeStyle = `rgba(255,214,110,${p})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(x, y - 48 * s.scale - 4, 7, 2.5, 0, 0, Math.PI * 2); ctx.stroke();
       }
       if (s.shieldUntil > this.game.time) {
         const p = 0.5 + Math.sin(time * 10) * 0.25;
@@ -1931,7 +1966,45 @@
       }
     }
 
+    // Brannoc's crossbow turret: a tripod with a crossbow that swings toward its target.
+    drawTurret(ctx, s, time) {
+      const x = s.x * T, y = s.y * T;
+      ctx.globalAlpha = Math.min(1, s.until / 1.5);
+      shadow(ctx, x, y, 12, 4, 0.25);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = C.woodDeep;
+      ctx.lineWidth = 3;
+      for (const lx of [-9, 0, 9]) { ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + lx, y); ctx.stroke(); }
+      ctx.strokeStyle = C.wood;
+      ctx.lineWidth = 1.6;
+      for (const lx of [-9, 0, 9]) { ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + lx, y); ctx.stroke(); }
+      const kick = s.lunge > 0 ? (s.lunge / 0.12) * 2.5 : 0;
+      ctx.save();
+      ctx.translate(x, y - 17);
+      ctx.rotate(s.aim != null ? s.aim : s.dirX < 0 ? Math.PI : 0);
+      ctx.translate(-kick, 0);
+      ctx.fillStyle = C.woodMid;
+      ctx.strokeStyle = C.woodDeep;
+      ctx.lineWidth = 1.4;
+      roundRect(ctx, -9, -2.5, 20, 5, 1.5); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#5b6266';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(7, -9); ctx.quadraticCurveTo(11, 0, 7, 9); ctx.stroke();
+      ctx.strokeStyle = '#f3e3c3';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(7, -9); ctx.lineTo(1, 0); ctx.lineTo(7, 9); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#cf762e';
+      ctx.beginPath(); ctx.arc(x, y - 17, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.lineCap = 'butt';
+      ctx.globalAlpha = 1;
+    }
+
     drawSoldier(ctx, s, time) {
+      if (s.turret) {
+        this.drawTurret(ctx, s, time);
+        return;
+      }
       const x = s.x * T, y = s.y * T;
       const bob = s.moving ? Math.abs(Math.sin(time * 11 + s.phase)) * 2.4 : 0;
       const lunge = s.lunge > 0 ? s.dirX * (s.lunge / 0.15) * 5 : 0;
@@ -2102,6 +2175,10 @@
         ctx.fillStyle = '#f5f0e6';
         ctx.fillRect(-10, -2.5, 4, 1.6); ctx.fillRect(-10, 0.9, 4, 1.6);
         ctx.restore();
+      } else if (p.kind === 'holy') {
+        glow(ctx, x, y, 11, 'rgba(255,255,255,1)', 'rgba(255,200,80,0)');
+        glow(ctx, x, y, 6, 'rgba(255,225,140,0.95)', 'rgba(0,0,0,0)');
+        if (Math.random() < 0.5) this.fx.add({ kind: 'dot', x, y, vx: (Math.random() - 0.5) * 16, vy: (Math.random() - 0.5) * 16, life: 0, max: 0.3, size: 2, color: 'rgba(255,230,150,0.9)', drag: 2 });
       } else if (p.kind === 'orb' || p.kind === 'ice') {
         const ice = p.kind === 'ice';
         glow(ctx, x, y, 11, 'rgba(255,255,255,1)', ice ? 'rgba(150,230,255,0)' : 'rgba(120,80,255,0)');

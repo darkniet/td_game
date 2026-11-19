@@ -23,6 +23,7 @@
 
   const dirBit = (dx, dy) => (dx > 0 ? E : dx < 0 ? W : dy > 0 ? S : N);
   const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+  const TURRET_SHOT = { projectile: 'arrow', damage: 'physical' };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
   function makePath(pts, index) {
@@ -873,13 +874,14 @@
       return best;
     }
 
-    heroShoot(h, e, dmg) {
-      const r = this.heroDef.ranged;
+    heroShoot(h, e, dmg, weapon) {
+      const r = weapon || this.heroDef.ranged;
       this.projectiles.push({
         kind: r.projectile, x: h.x, y: h.y - 0.45, target: e, tx: e.x, ty: this.aimY(e),
-        speed: r.projectile === 'arrow' ? 13 : 8, dmg, damage: r.damage, pen: 0, chain: 0, src: h, vx: 0, vy: -1,
+        speed: r.projectile === 'arrow' ? 13 : 8, dmg, damage: r.damage, pen: 0, chain: 0, src: h.src || h, vx: 0, vy: -1,
       });
       h.dirX = e.x >= h.x ? 1 : -1;
+      h.aim = Math.atan2(this.aimY(e) - (h.y - 0.27), e.x - h.x);
       h.lunge = 0.12;
       this.emit('fire', { tower: 'hero', kind: r.projectile, x: h.x, y: h.y - 0.45 });
     }
@@ -946,8 +948,61 @@
             this.lightning(h, { chain: sk.chain }, first, { x: h.x, y: h.y - 0.5 }, dmg * sk.mult);
             used(id, {});
           }
+        } else if (id === 'mend') {
+          const near = this.soldiers.filter((s) => s.alive && !s.turret && dist2(s, h) < sk.radius * sk.radius);
+          if (near.some((s) => s.hp < s.maxHp * 0.7)) {
+            for (const s of near) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * sk.heal);
+            used(id, { radius: sk.radius });
+          }
+        } else if (id === 'sanctify') {
+          // Cleanses whenever something nearby is hexed, buried or stunned, and blesses during any big fight.
+          const r2 = sk.radius * sk.radius;
+          const towers = this.towers.filter((t) => dist2(t, h) < r2);
+          const silenced = towers.filter((t) => t.disabledUntil > this.time);
+          const stunned = this.soldiers.filter((s) => s.alive && s.stunUntil > this.time && dist2(s, h) < r2);
+          if (towers.length && (silenced.length || stunned.length || around(sk.radius, true).length >= 3)) {
+            for (const t of silenced) t.disabledUntil = 0;
+            for (const s of stunned) s.stunUntil = 0;
+            for (const t of towers) { t.blessUntil = this.time + sk.duration; t.bless = sk.buff; }
+            used(id, { radius: sk.radius, targets: towers.map((t) => ({ x: t.x, y: t.y })) });
+          }
+        } else if (id === 'turret') {
+          if (around(sk.range, true).length) {
+            this.deployTurret(h, sk);
+            used(id, {});
+          }
+        } else if (id === 'charge') {
+          // Aim at the ground foe with the most others packed around it.
+          const r2 = sk.radius * sk.radius;
+          const foes = around(sk.range, false);
+          let best = null, crowd = 0;
+          for (const e of foes) {
+            const n = foes.filter((o) => dist2(o, e) < r2).length;
+            if (n > crowd) { crowd = n; best = e; }
+          }
+          if (best && (crowd >= 3 || best.def.boss)) {
+            for (const o of this.enemies) {
+              if (!o.alive || o.def.fly || dist2(o, best) >= r2) continue;
+              this.damage(o, dmg * sk.mult, 'physical', 0.4, 0, h);
+              this.stun(o, sk.stun);
+            }
+            used(id, { tx: best.x, ty: best.y, radius: sk.radius });
+          }
         }
       }
+    }
+
+    // The engineer's turrets are stationary soldiers that shoot and never block the road.
+    deployTurret(h, sk) {
+      const built = this.soldiers.filter((s) => s.turret && s.alive);
+      if (built.length >= sk.max) this.removeSoldier(built[0]);
+      const t = this.makeSoldier(h.x - (h.dirX < 0 ? -0.45 : 0.45), h.y + 0.15, null);
+      Object.assign(t, {
+        turret: true, until: sk.duration, range: sk.range, rate: sk.rate, dmg: h.dmg * sk.mult, armor: 0.3,
+        maxHp: Math.round(h.maxHp * 0.5), sprite: null, scale: 0.6, cd: 0.4, src: h, dirX: h.dirX,
+      });
+      t.hp = t.maxHp;
+      this.soldiers.push(t);
     }
 
     updateSoldiers(dt) {
@@ -964,6 +1019,15 @@
           continue;
         }
         if (s.stunUntil > this.time) continue;
+        if (s.turret) {
+          s.cd -= dt;
+          const shot = this.heroTarget(s, s.range);
+          if (shot && s.cd <= 0) {
+            s.cd = 1 / s.rate;
+            this.heroShoot(s, shot, s.dmg * this.mods.dmg, TURRET_SHOT);
+          }
+          continue;
+        }
         if (s.hero) this.heroSkills(s, dt);
         const home = { x: s.hx, y: s.hy };
         const ranged = s.hero && this.heroDef.ranged;
@@ -1369,6 +1433,7 @@
             t.reach = Math.max(t.reach, cs.reach || 0);
           }
         }
+        if (t.blessUntil > this.time) t.buff = Math.max(t.buff, t.bless);
       }
       // Oracles curse every foe in their range to take extra damage.
       for (const e of this.enemies) e.curse = 0;
@@ -1471,7 +1536,7 @@
     updateProjectiles(dt) {
       const out = [];
       for (const p of this.projectiles) {
-        if (p.kind === 'arrow' || p.kind === 'orb' || p.kind === 'ice') {
+        if (p.kind === 'arrow' || p.kind === 'orb' || p.kind === 'ice' || p.kind === 'holy') {
           if (p.target.alive) { p.tx = p.target.x; p.ty = this.aimY(p.target); }
           const dx = p.tx - p.x, dy = p.ty - p.y, d = Math.hypot(dx, dy);
           const step = p.speed * dt;
@@ -1630,7 +1695,7 @@
         })),
         soldiers: this.soldiers.map((s) => ({
           ...pick(s, ['id', 'hero', 'x', 'y', 'hx', 'hy', 'hp', 'maxHp', 'dmg', 'rate', 'armor', 'regen', 'cleave', 'alive', 'respawn', 'sprite', 'scale',
-            'level', 'xp', 'skillCd', 'ordered', 'dmgDealt', 'kills', 'shieldUntil', 'stunUntil']),
+            'level', 'xp', 'skillCd', 'ordered', 'dmgDealt', 'kills', 'shieldUntil', 'stunUntil', 'turret', 'range']),
           tower: s.tower ? s.tower.id : null, until: num(s.until), militia: !s.tower && !s.hero,
         })),
         hazards: this.hazards.map((h) => pick(h, ['kind', 'x', 'y', 'r', 'dps', 'corrode', 'until', 't0'])),
@@ -1673,6 +1738,7 @@
         g.soldiers.push(s);
       }
       if (!g.hero) g.hero = g.makeHero();
+      for (const s of g.soldiers) if (s.turret) s.src = g.hero;
       g.traps = data.traps.map((d) => Object.assign({
         def: TD.TRAPS[d.type], x: d.cx + 0.5, y: d.cy + 0.5, statKey: 'traps', hit: new Set(), firedT: 9,
       }, d, { until: den(d.until) }));
