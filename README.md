@@ -44,7 +44,7 @@ python3 -m http.server 8000   # then open http://localhost:8000
 | `1`–`9` | Pick a tower to build (`9` is your faction's tower) |
 | `Z` `X` `C` `V` | Lay a trap on the road |
 | `Q` `W` `E` `R` | Abilities |
-| `H` | Select the hero (then click the map to move him) |
+| `H` | Select the hero (then click the map to move them) |
 | Click | Build / select a tower |
 | `Shift` + click | Keep building the same tower |
 | `U` / `Del` | Upgrade / sell the selected tower |
