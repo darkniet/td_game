@@ -25,13 +25,14 @@ python3 -m http.server 8000   # then open http://localhost:8000
 - **8 shared towers**: Archer, Catapult, Wizard, Ballista, Barracks (soldiers block the road), Alchemist (burn + armor corrosion), Chapel (buffs nearby towers) and Windmill (gold each wave).
 - **16 specializations**: at level 3, eight towers pick one of two branches, each with 2 more ranks: Ranger Lodge / Marksman Spire, Bombard / Trebuchet, Frost Spire / Storm Tower, Scorpion Nest / Dragonslayer, Paladin Order / Berserker Hall, Plague Doctor / Pyromancer, Cathedral / Oracle's Sanctum, Royal Bank / Granary.
 - **6 heroes** you send anywhere on the map, each levelling up to 10 with two skills: Sir Aldric (knight), Lyra Swiftbow (ranged archer), Thane Borin (dwarf tank), Archmage Vael (ranged mage), Sister Seren (ranged healer who lifts hexes and blesses towers) and Brannoc Gearwright (engineer who sets up crossbow turrets).
+- **Hero gear**: each boss leaves a piece of gear behind the first time it falls. Equip one before battle to change how your hero's skills work: faster recharge, slowing, stunning, burning, life drain or raw power.
 - **4 abilities**: Meteor Strike, Call to Arms, Winter's Grasp, War Horn.
 - **4 road traps**: Spike Trap, Tar Pit, Powder Keg and Barricade.
 - **19 enemy types**, including healers, summoners, flyers (bats, wyverns) that cross the map along dashed flight lanes, and six bosses with signature moves: the Warlord's War Cry hastens his troops, the Iron King's stomps stun your soldiers, the Witch Queen and Red Dragon hex or scorch towers so they stop firing, the Lich raises foes that fall near him as Revenants, and the Siege Juggernaut bombards your most valuable towers with boulders. The Lich and the Juggernaut lead Endless waves 50 and 60.
 - **Combos**: heavy hits *shatter* frozen foes for 50% extra damage, and burning foes *ignite* tar pits into fire fields.
 - **Click any foe** to inspect its health, armor, speed, traits and current status effects. Tower panels show estimated damage per second.
 - **Royal Armory**: 14 permanent perks bought with Glory, which you earn in every game.
-- **32 trophies** that pay out Glory, and a **Codex** of every foe, tower and trap you've met.
+- **33 trophies** that pay out Glory, and a **Codex** of every foe, tower and trap you've met.
 - **Quality of life**: auto-save with Continue, a full refund when you sell before the next wave, per-tower damage stats and an end-of-battle report, auto-waves, 1×–5× speed, and settings for volume, shake, particles and more.
 
 ### Controls

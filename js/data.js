@@ -570,6 +570,18 @@ TD.HEROES = {
 };
 TD.HERO_ORDER = ['aldric', 'lyra', 'borin', 'vael', 'seren', 'brannoc'];
 
+// Hero gear: each boss leaves one piece behind the first time it falls (not in Sandbox or
+// cheated games). Equip one before a battle; it changes how the hero's skills work.
+TD.GEAR = {
+  banner: { name: 'War Banner', boss: 'warlord', color: '#c9503a', cooldown: 0.75, blurb: 'Hero skills recharge 25% faster.' },
+  witchwood: { name: 'Witchwood Charm', boss: 'witchqueen', color: '#5fae5a', slow: 0.4, slowDur: 2.5, blurb: 'Hero skills slow the foes they hit by 40% for 2.5 seconds.' },
+  crown: { name: 'Iron Crown', boss: 'ironking', color: '#8d9599', stun: 0.7, blurb: 'Hero skills stun the foes they hit for 0.7 seconds.' },
+  dragonheart: { name: 'Dragonheart', boss: 'dragon', color: '#e8704f', burn: 0.15, blurb: 'Hero skills set foes ablaze, burning for 15% of the hit each second for 3 seconds.' },
+  lantern: { name: 'Soul Lantern', boss: 'lich', color: '#7fe0a6', drain: 0.25, blurb: 'Hero skills heal the hero for 25% of the damage they deal.' },
+  gauntlets: { name: 'Siege Gauntlets', boss: 'juggernaut', color: '#b97a17', power: 1.4, blurb: 'Hero skills deal and heal 40% more, and turrets hit 40% harder.' },
+};
+TD.GEAR_ORDER = ['banner', 'witchwood', 'crown', 'dragonheart', 'lantern', 'gauntlets'];
+
 TD.SPEEDS = [1, 2, 3, 5];
 
 TD.ACHIEVEMENTS = [
@@ -591,6 +603,7 @@ TD.ACHIEVEMENTS = [
   { id: 'boss_dragon', name: 'Dragonbane', blurb: 'Defeat the Red Dragon.', glory: 15 },
   { id: 'boss_lich', name: 'Laid to Rest', blurb: 'Defeat the Lich.', glory: 20 },
   { id: 'boss_juggernaut', name: 'Siege Breaker', blurb: 'Defeat the Siege Juggernaut.', glory: 20 },
+  { id: 'all_gear', name: 'Fully Equipped', blurb: 'Find every piece of hero gear.', glory: 30 },
   { id: 'skyguard', name: 'Skyguard', blurb: 'Bring down 100 flying foes in total.', glory: 10 },
   { id: 'trapper', name: 'Trapper', blurb: 'Defeat 100 foes with traps in total.', glory: 10 },
   { id: 'meteor10', name: 'Extinction Event', blurb: 'Defeat 10 foes with a single Meteor Strike.', glory: 15 },

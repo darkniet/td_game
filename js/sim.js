@@ -204,6 +204,8 @@
       this.faction = TD.FACTIONS[this.factionId];
       this.heroId = TD.HEROES[opts.hero] ? opts.hero : this.faction.hero;
       this.heroDef = TD.HEROES[this.heroId];
+      this.gearId = TD.GEAR[opts.gear] ? opts.gear : null;
+      this.gear = this.gearId ? TD.GEAR[this.gearId] : {};
       const pk = (id) => this.perks[id] || 0;
       this.mods = {
         gold: 40 * pk('chest'), lives: 3 * pk('walls'), cost: 1 - 0.04 * pk('masons'), dmg: 1 + 0.05 * pk('steel'),
@@ -874,11 +876,11 @@
       return best;
     }
 
-    heroShoot(h, e, dmg, weapon) {
+    heroShoot(h, e, dmg, weapon, skill) {
       const r = weapon || this.heroDef.ranged;
       this.projectiles.push({
         kind: r.projectile, x: h.x, y: h.y - 0.45, target: e, tx: e.x, ty: this.aimY(e),
-        speed: r.projectile === 'arrow' ? 13 : 8, dmg, damage: r.damage, pen: 0, chain: 0, src: h.src || h, vx: 0, vy: -1,
+        speed: r.projectile === 'arrow' ? 13 : 8, dmg, damage: r.damage, pen: 0, chain: 0, src: h.src || h, vx: 0, vy: -1, skill: !!skill,
       });
       h.dirX = e.x >= h.x ? 1 : -1;
       h.aim = Math.atan2(this.aimY(e) - (h.y - 0.27), e.x - h.x);
@@ -891,11 +893,12 @@
       const H = this.heroDef;
       for (const id in H.skills) h.skillCd[id] -= dt;
       if (h.ordered) return;
-      const dmg = h.dmg * this.mods.dmg;
+      const power = this.gear.power || 1;
+      const dmg = h.dmg * this.mods.dmg * power;
       const ready = (id) => h.level >= H.skills[id].level && h.skillCd[id] <= 0;
       const around = (r, air) => this.enemies.filter((e) => e.alive && (air || !e.def.fly) && dist2(e, h) < r * r);
       const used = (id, data) => {
-        h.skillCd[id] = H.skills[id].cooldown;
+        h.skillCd[id] = H.skills[id].cooldown * (this.gear.cooldown || 1);
         this.emit('heroSkill', Object.assign({ skill: id, x: h.x, y: h.y }, data));
       };
       for (const id in H.skills) {
@@ -907,13 +910,14 @@
             for (const e of near) {
               this.damage(e, dmg * sk.mult, 'physical', 0.2, 0, h);
               if (sk.stun) this.stun(e, sk.stun);
+              this.skillHit(e, dmg * sk.mult);
             }
             used(id, { radius: sk.radius });
           }
         } else if (id === 'rally') {
           if (h.hp < h.maxHp * 0.45) {
             for (const s of this.soldiers) {
-              if (s.alive && dist2(s, h) < sk.radius * sk.radius) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * sk.heal);
+              if (s.alive && dist2(s, h) < sk.radius * sk.radius) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * sk.heal * power);
             }
             used(id, { radius: sk.radius });
           }
@@ -926,7 +930,7 @@
           const targets = this.enemies.filter((e) => e.alive && dist2(e, h) < H.ranged.range ** 2)
             .sort((a, b) => this.progress(a) - this.progress(b)).slice(0, sk.arrows);
           if (targets.length >= 2) {
-            for (const e of targets) this.heroShoot(h, e, dmg * sk.mult);
+            for (const e of targets) this.heroShoot(h, e, dmg * sk.mult, null, true);
             used(id, {});
           }
         } else if (id === 'snare') {
@@ -934,24 +938,28 @@
           if (target) {
             this.stun(target, sk.stun);
             this.damage(target, dmg * sk.mult, 'physical', 0.3, 0, h);
+            this.skillHit(target, dmg * sk.mult);
             used(id, { tx: target.x, ty: target.y });
           }
         } else if (id === 'nova') {
           const near = around(sk.radius, true);
           if (near.length >= 2 || (near.length && near[0].def.boss)) {
-            for (const e of near) this.damage(e, dmg * sk.mult, 'magic', 0, 0, h);
+            for (const e of near) {
+              this.damage(e, dmg * sk.mult, 'magic', 0, 0, h);
+              this.skillHit(e, dmg * sk.mult);
+            }
             used(id, { radius: sk.radius });
           }
         } else if (id === 'storm') {
           const first = this.heroTarget(h, H.ranged.range);
           if (first) {
-            this.lightning(h, { chain: sk.chain }, first, { x: h.x, y: h.y - 0.5 }, dmg * sk.mult);
+            this.lightning(h, { chain: sk.chain, skill: true }, first, { x: h.x, y: h.y - 0.5 }, dmg * sk.mult);
             used(id, {});
           }
         } else if (id === 'mend') {
           const near = this.soldiers.filter((s) => s.alive && !s.turret && dist2(s, h) < sk.radius * sk.radius);
           if (near.some((s) => s.hp < s.maxHp * 0.7)) {
-            for (const s of near) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * sk.heal);
+            for (const s of near) s.hp = Math.min(s.maxHp, s.hp + s.maxHp * sk.heal * power);
             used(id, { radius: sk.radius });
           }
         } else if (id === 'sanctify') {
@@ -985,11 +993,22 @@
               if (!o.alive || o.def.fly || dist2(o, best) >= r2) continue;
               this.damage(o, dmg * sk.mult, 'physical', 0.4, 0, h);
               this.stun(o, sk.stun);
+              this.skillHit(o, dmg * sk.mult);
             }
             used(id, { tx: best.x, ty: best.y, radius: sk.radius });
           }
         }
       }
+    }
+
+    // Gear effects that ride on every hit from a hero skill.
+    skillHit(e, amount) {
+      const g = this.gear, h = this.hero;
+      if (g.drain && h.alive) h.hp = Math.min(h.maxHp, h.hp + amount * g.drain);
+      if (!e.alive) return;
+      if (g.slow) this.applySlow(e, g.slow, g.slowDur);
+      if (g.stun) this.stun(e, g.stun);
+      if (g.burn) this.burn(e, amount * g.burn, 3, h);
     }
 
     // The engineer's turrets are stationary soldiers that shoot and never block the road.
@@ -998,7 +1017,7 @@
       if (built.length >= sk.max) this.removeSoldier(built[0]);
       const t = this.makeSoldier(h.x - (h.dirX < 0 ? -0.45 : 0.45), h.y + 0.15, null);
       Object.assign(t, {
-        turret: true, until: sk.duration, range: sk.range, rate: sk.rate, dmg: h.dmg * sk.mult, armor: 0.3,
+        turret: true, until: sk.duration, range: sk.range, rate: sk.rate, dmg: h.dmg * sk.mult * (this.gear.power || 1), armor: 0.3,
         maxHp: Math.round(h.maxHp * 0.5), sprite: null, scale: 0.6, cd: 0.4, src: h, dirX: h.dirX,
       });
       t.hp = t.maxHp;
@@ -1230,6 +1249,7 @@
         pts.push([cur.x, this.aimY(cur)]);
         this.damage(cur, power, 'magic', 0, 0, t);
         if (s.stunChance && this.rand() < s.stunChance) this.stun(cur, s.stunDur);
+        if (s.skill) this.skillHit(cur, power);
         power *= 0.85;
         let next = null, best = 2.2 * 2.2;
         for (const e of this.enemies) {
@@ -1603,6 +1623,7 @@
         this.kill(e, p.src);
       }
       this.emit('hit', { kind: p.kind, x: p.tx, y: p.ty });
+      if (p.skill) this.skillHit(e, dmg);
       if (p.kind === 'arrow') return;
       if (p.slow) this.applySlow(e, p.slow, p.slowDur);
       if (p.freeze && this.rand() < p.freeze) this.stun(e, p.freezeDur, true);
@@ -1676,7 +1697,7 @@
       const num = (v) => (v === Infinity ? 'inf' : v);
       const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k]]));
       return {
-        v: 1, map: this.map.id, mode: this.mode, perks: this.perks, seed: this.seed, faction: this.factionId, hero: this.heroId,
+        v: 1, map: this.map.id, mode: this.mode, perks: this.perks, seed: this.seed, faction: this.factionId, hero: this.heroId, gear: this.gearId,
         rand: this.rand.state(), waveRand: this.waveRand.state(), waveCache: this.waveCache,
         gold: num(this.gold), lives: num(this.lives), maxLives: num(this.maxLives),
         ...pick(this, ['wave', 'time', 'countdown', 'nextId', 'spawnCount', 'hornUntil', 'castCount', 'stats', 'damageBy', 'pending', 'spawners', 'cheated']),
@@ -1706,7 +1727,7 @@
       const map = TD.MAPS.find((m) => m.id === data.map);
       if (!map || data.v !== 1) return null;
       const den = (v) => (v === 'inf' ? Infinity : v);
-      const g = new Game(map, { mode: data.mode, perks: data.perks, seed: data.seed, faction: data.faction, hero: data.hero });
+      const g = new Game(map, { mode: data.mode, perks: data.perks, seed: data.seed, faction: data.faction, hero: data.hero, gear: data.gear });
       Object.assign(g, {
         waveCache: data.waveCache || {}, gold: den(data.gold), lives: den(data.lives), maxLives: den(data.maxLives),
         wave: data.wave, time: data.time, countdown: data.countdown, nextId: data.nextId, spawnCount: data.spawnCount,

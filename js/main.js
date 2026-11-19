@@ -44,6 +44,10 @@
   let pickHero = store.get('hero', 'aldric');
   if (!TD.FACTIONS[pickFaction]) pickFaction = 'kingdom';
   if (!TD.HEROES[pickHero]) pickHero = 'aldric';
+  // Hero gear found so far (dropped by bosses) and the piece equipped for the next battle.
+  const gearFound = store.get('gearFound', {});
+  let pickGear = store.get('gear', null);
+  if (!gearFound[pickGear]) pickGear = null;
 
   const ui = {
     canvas: $('#game'), board: $('#board'), stage: $('#stage'), overlay: $('#overlay'), command: $('#command'),
@@ -170,6 +174,18 @@
   };
 
   // Lifetime counters live in memory and are flushed to storage every few seconds.
+  // The first time a boss falls (outside Sandbox and cheated games) it leaves its gear behind.
+  function findGear(boss) {
+    const id = TD.GEAR_ORDER.find((g) => TD.GEAR[g].boss === boss);
+    if (!id || gearFound[id]) return;
+    gearFound[id] = Date.now();
+    store.set('gearFound', gearFound);
+    const g = TD.GEAR[id];
+    TD.Audio.play('trophy');
+    toast(`<span class="gear-gem" style="--gc:${g.color}"></span><span><b>Gear found: ${g.name}.</b> ${g.blurb} Equip it on the battle menu.</span>`, 'gold', 6000);
+    if (TD.GEAR_ORDER.every((x) => gearFound[x])) trophies.unlock('all_gear');
+  }
+
   const trophies = {
     got: store.get('trophies', {}),
     life: Object.assign({ kills: 0, flyKills: 0, trapKills: 0, branches: {} }, store.get('lifetime', {})),
@@ -205,7 +221,10 @@
           l.kills++;
           if (ev.fly) l.flyKills++;
           if (ev.source === 'traps') l.trapKills++;
-          if (ev.boss) this.unlock('boss_' + ev.enemy);
+          if (ev.boss) {
+            this.unlock('boss_' + ev.enemy);
+            findGear(ev.enemy);
+          }
           if (ev.cast) {
             this.castKills[ev.cast] = (this.castKills[ev.cast] || 0) + 1;
             if (this.castKills[ev.cast] >= 10) this.unlock('meteor10');
@@ -356,6 +375,15 @@
       return `<button class="hero-pick ${id === pickHero ? 'on' : ''}" data-hero="${id}" title="${x.name}, ${x.title}"><img src="assets/units/${x.sprite}.png" alt=""><span>${x.name.split(' ').pop()}</span></button>`;
     }).join('');
     const skills = Object.values(h.skills).map((k) => `<b>${k.name}</b>`).join(' · ');
+    const gearChips = `<button class="gear-pick ${pickGear ? '' : 'on'}" data-gear="">None</button>` + TD.GEAR_ORDER.map((id) => {
+      const g = TD.GEAR[id];
+      if (!gearFound[id]) return `<button class="gear-pick locked" disabled title="Defeat the ${TD.ENEMIES[g.boss].name} to find this."><span class="gear-gem"></span>?</button>`;
+      return `<button class="gear-pick ${id === pickGear ? 'on' : ''}" data-gear="${id}" title="${g.blurb}"><span class="gear-gem" style="--gc:${g.color}"></span>${g.name}</button>`;
+    }).join('');
+    const found = TD.GEAR_ORDER.filter((id) => gearFound[id]).length;
+    const gearInfo = pickGear ? `<b>${TD.GEAR[pickGear].name}.</b> ${TD.GEAR[pickGear].blurb}`
+      : found ? `${found} of ${TD.GEAR_ORDER.length} pieces found. Equip one to change how your hero's skills work.`
+        : 'Bosses leave gear behind the first time they fall. Equip it here to change how your hero\u2019s skills work.';
     return `<div class="council">
       <div class="pick">
         <div class="pick-title">Faction</div>
@@ -366,6 +394,8 @@
         <div class="pick-title">Hero</div>
         <div class="pick-row">${heroes}</div>
         <div class="pick-info"><b>${h.name}</b>, ${h.title}. ${h.blurb}<br><small>${h.ranged ? 'Ranged' : 'Melee'} · ${skills}</small></div>
+        <div class="gear-row"><span class="gear-label">Gear</span>${gearChips}</div>
+        <div class="pick-info">${gearInfo}</div>
       </div>
     </div>`;
   }
@@ -565,7 +595,7 @@
 
   function startGame(map, mode) {
     setGame(new TD.Game(map, {
-      mode, perks: mode === 'sandbox' ? {} : progress.perks(), seed: (Math.random() * 1e9) | 0, faction: pickFaction, hero: pickHero,
+      mode, perks: mode === 'sandbox' ? {} : progress.perks(), seed: (Math.random() * 1e9) | 0, faction: pickFaction, hero: pickHero, gear: pickGear,
     }));
     beginPlay();
     const tip = mode === 'sandbox' ? 'Sandbox: gold and lives are unlimited. Send waves whenever you like.'
@@ -706,6 +736,14 @@
 
   let resetArmed = false;
   ui.overlay.addEventListener('click', (e) => {
+    const gearPick = e.target.closest('[data-gear]');
+    if (gearPick) {
+      pickGear = gearPick.dataset.gear || null;
+      store.set('gear', pickGear);
+      TD.Audio.play('click');
+      showMenu();
+      return;
+    }
     const pick = e.target.closest('[data-faction], [data-hero]');
     if (pick) {
       if (pick.dataset.faction) {
@@ -1090,8 +1128,10 @@
     }
     if (view.hero) {
       const H = game.heroDef, h = game.hero;
+      const cdMul = game.gear.cooldown || 1;
       const skills = Object.values(H.skills).map((k) => `<div class="skill ${h.level >= k.level ? '' : 'locked'}">
-        <b>${k.name}</b> <small>${h.level >= k.level ? `${k.cooldown}s cooldown` : `unlocks at level ${k.level}`}</small><span>${k.blurb}</span></div>`).join('');
+        <b>${k.name}</b> <small>${h.level >= k.level ? `${+(k.cooldown * cdMul).toFixed(1)}s cooldown` : `unlocks at level ${k.level}`}</small><span>${k.blurb}</span></div>`).join('')
+        + (game.gearId ? `<div class="skill gear"><b><span class="gear-gem" style="--gc:${game.gear.color}"></span>${game.gear.name}</b> <small>gear</small><span>${game.gear.blurb}</span></div>` : '');
       ui.info.innerHTML = `
         <div class="head"><span class="hero-pic"><img src="assets/units/${H.sprite}.png" alt=""></span><div><h3>${H.name}</h3><div class="sub">Level ${h.level} ${H.title} · ${H.ranged ? 'ranged' : 'melee'}</div></div></div>
         <div class="xpbar"><i data-live="xp"></i><span data-live="xptext"></span></div>
